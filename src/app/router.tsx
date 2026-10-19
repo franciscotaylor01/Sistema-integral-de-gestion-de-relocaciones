@@ -33,6 +33,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, lazy: () => import('@/features/dashboard/DashboardPage').then((m) => ({ Component: m.DashboardPage })) },
       { path: 'proyectos', lazy: () => import('@/features/projects/ProjectsPage').then((m) => ({ Component: m.ProjectsPage })) },
+      { path: 'proyectos/nuevo', lazy: () => import('@/features/projects/new/NewProjectPage').then((m) => ({ Component: m.NewProjectPage })) },
       {
         path: 'proyectos/:projectId',
         lazy: () => import('@/features/projects/ProjectDetailPage').then((m) => ({ Component: m.ProjectDetailPage })),
@@ -43,6 +44,7 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/clients/ClientDetailPage').then((m) => ({ Component: m.ClientDetailPage })),
       },
       { path: 'operaciones', lazy: () => import('@/features/operations/OperationsPage').then((m) => ({ Component: m.OperationsPage })) },
+      { path: 'tareas', lazy: () => import('@/features/tasks/TasksPage').then((m) => ({ Component: m.TasksPage })) },
       { path: 'finanzas', lazy: () => import('@/features/finance/FinancePage').then((m) => ({ Component: m.FinancePage })) },
       ...upcomingModules,
       { path: '*', element: <NotFoundPage /> },

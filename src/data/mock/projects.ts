@@ -1,67 +1,12 @@
-import type { Project, ProjectService, ServiceStatus, ServiceType, WorkflowStage } from '@/types/domain'
+import type { ProjectSeed } from './seedTypes'
 
-/* Fictional relocation projects — demo data only. */
+/*
+ * Fictional relocation projects — demo data only. These are seed definitions:
+ * `data/seed.ts` expands them into normalised records (services, workflow
+ * stages from the templates in config/workflowTemplates.ts, tasks…).
+ */
 
-/** Default workflow per service type (will become a configurable table). */
-const stageTemplates: Record<ServiceType, string[]> = {
-  immigration: ['Relevamiento de requisitos', 'Documentación', 'Legalizaciones', 'Presentación', 'Resolución', 'Residencia emitida'],
-  housing: ['Brief de necesidades', 'Preselección', 'Visitas', 'Negociación', 'Firma de contrato', 'Entrega de llaves'],
-  schooling: ['Relevamiento', 'Visitas a colegios', 'Aplicación', 'Admisión', 'Inscripción'],
-  moving: ['Cotización', 'Inventario', 'Embalaje', 'Tránsito', 'Aduana', 'Entrega'],
-  orientation: ['Agenda', 'Tour de ciudad', 'Trámites locales', 'Cierre'],
-  'settling-in': ['Servicios del hogar', 'Cuenta bancaria', 'Registro local', 'Cierre'],
-  'tax-advisory': ['Diagnóstico', 'Planificación', 'Presentaciones', 'Cierre'],
-  departure: ['Fin de contrato', 'Inspección', 'Bajas de servicios', 'Cierre'],
-}
-
-const DAY = 86_400_000
-
-function interpolateDate(start: string, end: string, fraction: number): string {
-  const a = Date.parse(`${start}T00:00:00Z`)
-  const b = Date.parse(`${end}T00:00:00Z`)
-  return new Date(a + Math.round(((b - a) * fraction) / DAY) * DAY).toISOString().slice(0, 10)
-}
-
-interface ServiceSeed {
-  type: ServiceType
-  status: ServiceStatus
-  owner: string
-  /** Number of completed workflow stages. */
-  done: number
-  due: string
-  price: number
-  cost: number
-  supplier?: string
-}
-
-function buildServices(projectId: string, start: string, seeds: ServiceSeed[]): ProjectService[] {
-  return seeds.map((s, i) => {
-    const labels = stageTemplates[s.type]
-    const done = s.status === 'completed' ? labels.length : s.done
-    const stages: WorkflowStage[] = labels.map((label, j) => ({
-      id: `${projectId}_s${i + 1}_st${j + 1}`,
-      label,
-      status: j < done ? 'done' : j === done && s.status !== 'not-started' ? 'current' : 'pending',
-      date: interpolateDate(start, s.due, (j + 1) / labels.length),
-    }))
-    return {
-      id: `${projectId}_s${i + 1}`,
-      projectId,
-      type: s.type,
-      status: s.status,
-      ownerId: s.owner,
-      supplierId: s.supplier,
-      dueDate: s.due,
-      stages,
-      price: s.price,
-      estimatedCost: s.cost,
-    }
-  })
-}
-
-type ProjectSeed = Omit<Project, 'services'> & { services: ServiceSeed[] }
-
-const seeds: ProjectSeed[] = [
+export const mockProjectSeeds: ProjectSeed[] = [
   {
     id: 'prj_0162', code: 'REL-2026-0162', clientId: 'cli_oceanic', assigneeId: 'asg_12', kind: 'long-term',
     origin: { country: 'GB', city: 'Londres' }, destination: { country: 'AR', city: 'Buenos Aires' },
@@ -250,8 +195,3 @@ const seeds: ProjectSeed[] = [
     ],
   },
 ]
-
-export const mockProjects: Project[] = seeds.map(({ services, ...project }) => ({
-  ...project,
-  services: buildServices(project.id, project.startDate, services),
-}))

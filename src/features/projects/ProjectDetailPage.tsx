@@ -1,9 +1,9 @@
-import { Building2 } from 'lucide-react'
+import { Building2, Pencil } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { BackLink } from '@/components/ui/BackLink'
-import { ButtonLink } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { Fact } from '@/components/ui/Fact'
 import { Flag } from '@/components/ui/Flag'
@@ -20,7 +20,9 @@ import { formatDate } from '@/lib/dates'
 import { formatCurrency, formatPercent } from '@/lib/format'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 import { buildProjectContext } from './projectContext'
-import { projectBudget, projectProgress } from './selectors'
+import { projectProgress } from '@/domain/progress'
+import { EditProjectModal } from './modals/EditProjectModal'
+import { projectBudget } from './selectors'
 import { ActivityTab } from './tabs/ActivityTab'
 import { DocumentsTab } from './tabs/DocumentsTab'
 import { FinanceTab } from './tabs/FinanceTab'
@@ -39,6 +41,7 @@ export function ProjectDetailPage() {
   const { workspace, loading } = useWorkspace()
   const tabParam = params.get('tab')
   const tab: ProjectTab = isTab(tabParam) ? tabParam : 'resumen'
+  const [editing, setEditing] = useState(false)
 
   const ctx = useMemo(() => {
     const project = workspace?.projectById.get(projectId)
@@ -48,8 +51,8 @@ export function ProjectDetailPage() {
   if (loading) return <ProjectDetailSkeleton />
   if (!ctx) return <NotFoundPage title="Proyecto no encontrado" description={`No existe un proyecto con el identificador “${projectId}”.`} />
 
-  const { project, client, assignee, owner } = ctx
-  const progress = projectProgress(project)
+  const { project, client, beneficiary, owner } = ctx
+  const progress = projectProgress(project.services, project.services.flatMap((s) => s.procedures)).pct
 
   const setTab = (value: ProjectTab) =>
     setParams(
@@ -73,7 +76,7 @@ export function ProjectDetailPage() {
             <StatusBadge variant="soft" meta={financialStatusMeta[project.financialStatus]} />
           </div>
         }
-        title={assignee?.name ?? project.code}
+        title={beneficiary?.name ?? project.code}
         description={
           <span className="flex flex-wrap items-center gap-x-[10px] gap-y-[6px]">
             <span className="font-medium text-ink-secondary">{client?.name}</span>
@@ -86,16 +89,22 @@ export function ProjectDetailPage() {
               {project.destination.city}, {countryNames[project.destination.country]}
             </span>
             <span aria-hidden className="h-[13px] w-px bg-line-strong" />
-            <span>{relocationKindLabel[project.kind]}</span>
+            <span>{relocationKindLabel[project.category]}</span>
           </span>
         }
         actions={
-          client && (
-            <ButtonLink to={clientPath(client.id)} variant="outline">
-              <Building2 aria-hidden className="size-[17px]" strokeWidth={1.9} />
-              Ver cliente
-            </ButtonLink>
-          )
+          <>
+            {client && (
+              <ButtonLink to={clientPath(client.id)} variant="outline">
+                <Building2 aria-hidden className="size-[17px]" strokeWidth={1.9} />
+                Ver cliente
+              </ButtonLink>
+            )}
+            <Button onClick={() => setEditing(true)}>
+              <Pencil aria-hidden className="size-[16px]" strokeWidth={1.9} />
+              Editar proyecto
+            </Button>
+          </>
         }
       />
 
@@ -139,7 +148,7 @@ export function ProjectDetailPage() {
       <div className="mt-[20px]">
         <TabPanel idPrefix="project-tabs" activeValue={tab}>
           <motion.div variants={staggerVariants} initial="hidden" animate="show">
-            {tab === 'resumen' && <OverviewTab ctx={ctx} onNavigate={setTab} />}
+            {tab === 'resumen' && <OverviewTab ctx={ctx} onNavigate={setTab} onEdit={() => setEditing(true)} />}
             {tab === 'servicios' && <ServicesTab ctx={ctx} />}
             {tab === 'operaciones' && <OperationsTab ctx={ctx} />}
             {tab === 'finanzas' && <FinanceTab ctx={ctx} />}
@@ -148,6 +157,7 @@ export function ProjectDetailPage() {
           </motion.div>
         </TabPanel>
       </div>
+      <EditProjectModal open={editing} onClose={() => setEditing(false)} ctx={ctx} />
     </div>
   )
 }

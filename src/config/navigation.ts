@@ -15,6 +15,8 @@ import type { ModuleItem, NavItem } from '@/types/navigation'
 export const ROUTES = {
   dashboard: '/',
   projects: '/proyectos',
+  newProject: '/proyectos/nuevo',
+  tasks: '/tareas',
   clients: '/clientes',
   operations: '/operaciones',
   finance: '/finanzas',

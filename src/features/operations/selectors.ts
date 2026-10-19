@@ -1,7 +1,7 @@
-import { serviceTypeMeta } from '@/config/catalogs'
 import { projectPath } from '@/config/navigation'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { daysUntil } from '@/lib/dates'
+import { getServiceType } from '@/config/serviceCatalog'
 
 export const DEADLINE_HORIZON_DAYS = 21
 
@@ -20,7 +20,7 @@ export function collectDeadlines(ws: Workspace, horizon = DEADLINE_HORIZON_DAYS)
       .filter((s) => s.status !== 'completed' && daysUntil(s.dueDate) >= 0 && daysUntil(s.dueDate) <= horizon)
       .map((s) => ({
         id: s.id,
-        title: `${serviceTypeMeta[s.type].label} · ${ws.assigneeById.get(p.assigneeId)?.name ?? ''}`,
+        title: `${getServiceType(s.type).label} · ${ws.personById.get(p.beneficiaryId)?.name ?? ''}`,
         detail: p.code,
         date: s.dueDate,
         href: `${projectPath(p.id)}?tab=servicios`,

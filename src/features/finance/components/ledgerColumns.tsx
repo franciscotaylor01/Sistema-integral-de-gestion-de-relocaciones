@@ -1,7 +1,7 @@
 import { Link } from 'react-router'
 import type { Column } from '@/components/ui/DataTable'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { invoiceStatusMeta, payableStatusMeta, serviceTypeMeta } from '@/config/catalogs'
+import { invoiceStatusMeta, payableStatusMeta} from '@/config/catalogs'
 import { clientPath, projectPath } from '@/config/navigation'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { formatDate } from '@/lib/dates'
@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/format'
 import type { Invoice, Payment, SupplierPayable } from '@/types/domain'
 import { invoiceOutstanding, payableOutstanding } from '../selectors'
 import { DueCell } from './DueCell'
+import { getServiceType } from '@/config/serviceCatalog'
 
 export function invoiceColumns(ws: Workspace, opts: { withClient?: boolean; withProject?: boolean } = {}): Column<Invoice>[] {
   const cols: (Column<Invoice> | false)[] = [
@@ -72,7 +73,7 @@ export function payableColumns(ws: Workspace, opts: { withProject?: boolean } = 
         return (
           <span className="block min-w-0">
             <span className="block truncate font-medium">{s?.name}</span>
-            {s && <span className="block text-[12px] text-muted">{serviceTypeMeta[s.category].label}</span>}
+            {s && <span className="block text-[12px] text-muted">{getServiceType(s.category).label}</span>}
           </span>
         )
       },

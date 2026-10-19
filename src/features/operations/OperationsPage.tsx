@@ -13,18 +13,19 @@ import { ServiceChip } from '@/components/ui/ServiceChip'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatTile } from '@/components/ui/StatTile'
 import { Tabs } from '@/components/ui/Tabs'
-import { serviceStatusMeta, serviceTypeMeta } from '@/config/catalogs'
+import { serviceStatusMeta} from '@/config/catalogs'
 import { isActiveProject } from '@/features/projects/selectors'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { daysUntil } from '@/lib/dates'
 import { formatNumber } from '@/lib/format'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 import { matches } from '@/lib/search'
-import type { ServiceStatus, ServiceType } from '@/types/domain'
+import type { ServiceStatus} from '@/types/domain'
 import { DocumentExpirationsCard } from './components/DocumentExpirationsCard'
 import { MigrationProgressCard } from './components/MigrationProgressCard'
 import { ServiceBoard, type ServiceRow } from './components/ServiceBoard'
 import { ServiceList } from './components/ServiceList'
+import { getServiceType, serviceCatalog } from '@/config/serviceCatalog'
 
 type View = 'tablero' | 'lista'
 const DUE_SOON_DAYS = 14
@@ -66,7 +67,7 @@ export function OperationsPage() {
     if (!workspace) return []
     return workspace.projects
       .filter(isActiveProject)
-      .flatMap((project) => project.services.map((service) => ({ service, project, assignee: workspace.assigneeById.get(project.assigneeId) })))
+      .flatMap((project) => project.services.map((service) => ({ service, project, assignee: workspace.personById.get(project.beneficiaryId) })))
   }, [workspace])
 
   const rows = allRows.filter(({ service: s, project: p, assignee }) => {
@@ -74,7 +75,7 @@ export function OperationsPage() {
     if (status && s.status !== status) return false
     if (owner && s.ownerId !== owner) return false
     if (due && (s.status === 'completed' || daysUntil(s.dueDate) > DUE_SOON_DAYS)) return false
-    return matches(q, p.code, assignee?.name, serviceTypeMeta[s.type].label, p.destination.city, workspace?.clientById.get(p.clientId)?.name)
+    return matches(q, p.code, assignee?.name, getServiceType(s.type).label, p.destination.city, workspace?.clientById.get(p.clientId)?.name)
   })
 
   const kpis = useMemo(() => {
@@ -178,7 +179,7 @@ export function OperationsPage() {
                 label="Servicio"
                 value={type}
                 onChange={(v) => setParam('tipo', v)}
-                options={(Object.keys(serviceTypeMeta) as ServiceType[]).map((t) => ({ value: t, label: serviceTypeMeta[t].label, icon: <ServiceChip type={t} /> }))}
+                options={serviceCatalog.map(({ id: t }) => ({ value: t, label: getServiceType(t).label, icon: <ServiceChip type={t} /> }))}
               />
               <FilterSelect
                 size="sm"

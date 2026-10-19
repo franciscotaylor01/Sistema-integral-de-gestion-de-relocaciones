@@ -1,3 +1,4 @@
+import { projectProgress as domainProjectProgress, serviceProgress as domainServiceProgress } from '@/domain/progress'
 import type { Project, ProjectService } from '@/types/domain'
 
 export const ACTIVE_PROJECT_STATUSES = ['onboarding', 'in-progress', 'on-hold'] as const
@@ -6,24 +7,22 @@ export function isActiveProject(p: Project): boolean {
   return (ACTIVE_PROJECT_STATUSES as readonly string[]).includes(p.operationalStatus)
 }
 
+/** Percentage of completed workflow stages (service + its procedures). */
 export function serviceProgress(s: ProjectService): number {
-  if (s.stages.length === 0) return 0
-  return Math.round((s.stages.filter((st) => st.status === 'done').length / s.stages.length) * 100)
+  return domainServiceProgress(s, s.procedures).pct
 }
 
-/** Share of all workflow stages completed across the project's services. */
+/** Percentage of completed workflow stages across all services and procedures. */
 export function projectProgress(p: Project): number {
-  const stages = p.services.flatMap((s) => s.stages)
-  if (stages.length === 0) return 0
-  return Math.round((stages.filter((st) => st.status === 'done').length / stages.length) * 100)
+  return domainProjectProgress(p.services, p.services.flatMap((s) => s.procedures)).pct
 }
 
 export function projectBudget(p: Project): number {
-  return p.services.reduce((sum, s) => sum + s.price, 0)
+  return p.services.reduce((sum, s) => sum + (s.price ?? 0), 0)
 }
 
 export function projectEstimatedCost(p: Project): number {
-  return p.services.reduce((sum, s) => sum + s.estimatedCost, 0)
+  return p.services.reduce((sum, s) => sum + (s.estimatedCost ?? 0), 0)
 }
 
 /** Current workflow stage label of a service, or a summary when not running. */

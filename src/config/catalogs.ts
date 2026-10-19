@@ -1,29 +1,19 @@
 import type { LucideIcon } from 'lucide-react'
-import {
-  BookOpenCheck,
-  Compass,
-  GraduationCap,
-  Home,
-  KeyRound,
-  Landmark,
-  PlaneTakeoff,
-  Stamp,
-  Truck,
-} from 'lucide-react'
+import { BookOpenCheck, Home, Stamp } from 'lucide-react'
 import type {
   AlertSeverity,
   ClientStatus,
   CountryCode,
   DocumentKind,
   DocumentStatus,
-  FamilyRelation,
   InvoiceStatus,
+  ParticipantRole,
   PayableStatus,
   ProjectFinancialStatus,
+  ProjectCategory,
   ProjectOperationalStatus,
-  RelocationKind,
   ServiceStatus,
-  ServiceType,
+  TaskStatus,
 } from '@/types/domain'
 
 /** Semantic color of a status, resolved to tokens by <StatusBadge>. */
@@ -96,32 +86,25 @@ export const alertSeverityMeta: Record<AlertSeverity, StatusMeta> = {
   info: { label: 'Info', tone: 'info' },
 }
 
-export interface ServiceTypeMeta {
-  label: string
-  icon: LucideIcon
-  /** Gradient chip, same treatment as Vertix activity categories. */
-  bg: string
+export const taskStatusMeta: Record<TaskStatus, StatusMeta> = {
+  todo: { label: 'Pendiente', tone: 'neutral' },
+  'in-progress': { label: 'En curso', tone: 'accent' },
+  waiting: { label: 'Esperando a terceros', tone: 'info' },
+  done: { label: 'Completada', tone: 'success' },
 }
 
-export const serviceTypeMeta: Record<ServiceType, ServiceTypeMeta> = {
-  immigration: { label: 'Migraciones', icon: Stamp, bg: 'linear-gradient(160deg,#f0a07c,#d65e38)' },
-  housing: { label: 'Vivienda', icon: Home, bg: 'linear-gradient(160deg,#5ea4ff,#2f6fe8)' },
-  schooling: { label: 'Escolaridad', icon: GraduationCap, bg: 'linear-gradient(160deg,#a68bff,#6d4fe0)' },
-  moving: { label: 'Mudanza internacional', icon: Truck, bg: 'linear-gradient(160deg,#5c5a60,#232126)' },
-  orientation: { label: 'Orientación', icon: Compass, bg: 'linear-gradient(160deg,#5fd0a0,#22a06b)' },
-  'settling-in': { label: 'Instalación', icon: KeyRound, bg: 'linear-gradient(160deg,#f3c46b,#d9962a)' },
-  'tax-advisory': { label: 'Asesoría fiscal', icon: Landmark, bg: 'linear-gradient(160deg,#7cc6d9,#2f8fa8)' },
-  departure: { label: 'Salida / repatriación', icon: PlaneTakeoff, bg: 'linear-gradient(160deg,#f08ca6,#d24a6c)' },
-}
-
-export const relocationKindLabel: Record<RelocationKind, string> = {
+export const projectCategoryLabel: Record<ProjectCategory, string> = {
   'long-term': 'Asignación larga',
   'short-term': 'Asignación corta',
   permanent: 'Traslado permanente',
   repatriation: 'Repatriación',
 }
 
-export const familyRelationLabel: Record<FamilyRelation, string> = {
+/** @deprecated alias for Phase 1 call sites. */
+export const relocationKindLabel = projectCategoryLabel
+
+export const participantRoleLabel: Record<ParticipantRole, string> = {
+  beneficiary: 'Beneficiario/a',
   spouse: 'Cónyuge',
   partner: 'Pareja',
   child: 'Hijo/a',

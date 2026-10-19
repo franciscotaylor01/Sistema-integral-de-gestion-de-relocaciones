@@ -7,13 +7,14 @@ import { MetaBadge } from '@/components/ui/MetaBadge'
 import { SectionTitle } from '@/components/ui/SectionTitle'
 import { ServiceChip } from '@/components/ui/ServiceChip'
 import { StatTile } from '@/components/ui/StatTile'
-import { serviceTypeMeta } from '@/config/catalogs'
 import { invoiceColumns, payableColumns } from '@/features/finance/components/ledgerColumns'
 import { summarizeLedger } from '@/features/finance/selectors'
 import { formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/format'
 import type { ProjectService } from '@/types/domain'
+import { PreviewBanner } from '../components/PreviewBanner'
 import type { ProjectContext } from '../projectContext'
 import { projectBudget, projectEstimatedCost } from '../selectors'
+import { getServiceType } from '@/config/serviceCatalog'
 
 export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   const { project, workspace } = ctx
@@ -26,6 +27,9 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
 
   return (
     <div className="flex flex-col gap-[24px]">
+      <PreviewBanner>
+        Cotizaciones, órdenes de compra, facturación y liquidaciones se habilitarán en la fase financiera. Los importes son datos ficticios de referencia.
+      </PreviewBanner>
       <Card aria-label="Indicadores financieros del proyecto" className="grid grid-cols-1 gap-[14px] p-[18px] sm:grid-cols-2 xl:grid-cols-5">
         <StatTile
           tone="accent"
@@ -101,19 +105,19 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
               cell: (s) => (
                 <span className="flex items-center gap-[10px]">
                   <ServiceChip type={s.type} />
-                  <span className="truncate font-medium">{serviceTypeMeta[s.type].label}</span>
+                  <span className="truncate font-medium">{getServiceType(s.type).label}</span>
                 </span>
               ),
             },
-            { id: 'price', header: 'Precio', className: 'tabular', cell: (s) => formatCurrency(s.price, cur) },
-            { id: 'cost', header: 'Costo estimado', className: 'tabular', cell: (s) => formatCurrency(s.estimatedCost, cur) },
-            { id: 'margin', header: 'Margen', className: 'tabular font-medium', cell: (s) => formatCurrency(s.price - s.estimatedCost, cur) },
+            { id: 'price', header: 'Precio', className: 'tabular', cell: (s) => formatCurrency(s.price ?? 0, cur) },
+            { id: 'cost', header: 'Costo estimado', className: 'tabular', cell: (s) => formatCurrency(s.estimatedCost ?? 0, cur) },
+            { id: 'margin', header: 'Margen', className: 'tabular font-medium', cell: (s) => formatCurrency((s.price ?? 0) - (s.estimatedCost ?? 0), cur) },
             {
               id: 'pct',
               header: '%',
               width: '90px',
               className: 'tabular text-success font-medium',
-              cell: (s) => formatPercent(s.price ? ((s.price - s.estimatedCost) / s.price) * 100 : 0),
+              cell: (s) => formatPercent(s.price ? ((s.price - (s.estimatedCost ?? 0)) / s.price) * 100 : 0),
             },
           ]}
         />

@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { CircleHelp, Moon, Sun, X } from 'lucide-react'
+import { CircleHelp, ListChecks, Moon, Sun, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef } from 'react'
 import { NavLink } from 'react-router'
@@ -90,6 +90,7 @@ export function MobileNav({ open, onClose }: { open: boolean; onClose: () => voi
               {primaryNav.map((item) => (
                 <DrawerLink key={item.id} to={item.path} label={item.label} icon={item.icon} onNavigate={onClose} />
               ))}
+              <DrawerLink to={ROUTES.tasks} label="Mis tareas" icon={ListChecks} onNavigate={onClose} />
             </div>
 
             <p className="mt-[22px] px-[16px] text-[12px] font-medium uppercase tracking-[0.06em] text-subtle">Próximos módulos</p>

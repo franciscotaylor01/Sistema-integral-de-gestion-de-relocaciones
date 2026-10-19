@@ -16,7 +16,9 @@ import { AlertsCard } from './components/AlertsCard'
 import { CashflowChartCard } from '@/features/finance/components/CashflowChartCard'
 import { DashboardSkeleton } from './components/DashboardSkeleton'
 import { KpiGrid } from './components/KpiGrid'
+import { MyTasksCard } from './components/MyTasksCard'
 import { ProfitabilityCard } from './components/ProfitabilityCard'
+import { RecentActivityCard } from './components/RecentActivityCard'
 import { RecentProjectsCard } from './components/RecentProjectsCard'
 import { SupplierPaymentsCard } from './components/SupplierPaymentsCard'
 import { UpcomingDeadlinesCard } from './components/UpcomingDeadlinesCard'
@@ -67,9 +69,14 @@ export function DashboardPage() {
               <RecentProjectsCard workspace={workspace} limit={7} />
             </div>
 
-            <SupplierPaymentsCard workspace={workspace} />
+            <MyTasksCard workspace={workspace} />
             <div className="min-w-0 md:col-span-1 xl:col-span-2">
               <AlertsCard alerts={workspace.alerts} />
+            </div>
+
+            <SupplierPaymentsCard workspace={workspace} />
+            <div className="min-w-0 md:col-span-1 xl:col-span-2">
+              <RecentActivityCard workspace={workspace} />
             </div>
         </motion.div>
       )}

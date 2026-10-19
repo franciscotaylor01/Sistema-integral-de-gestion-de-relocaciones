@@ -1,11 +1,11 @@
 import type { LucideIcon } from 'lucide-react'
-import { ArrowRight, BriefcaseBusiness, Building2, CornerDownLeft, Search } from 'lucide-react'
+import { ArrowRight, BriefcaseBusiness, Building2, CornerDownLeft, ListChecks, Plus, Search } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { countryNames } from '@/config/catalogs'
-import { clientPath, primaryNav, projectPath, railNav, settingsModule } from '@/config/navigation'
+import { clientPath, primaryNav, projectPath, railNav, ROUTES, settingsModule } from '@/config/navigation'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
 import { easeOutSoft } from '@/lib/motion'
@@ -45,7 +45,11 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
 
   const results = useMemo<Result[]>(() => {
     const q = query.trim()
-    const sections: Result[] = [...primaryNav, ...railNav.filter((m) => m.path !== '/'), settingsModule]
+    const shortcuts = [
+      { id: 'tasks', label: 'Mis tareas', path: ROUTES.tasks, icon: ListChecks },
+      { id: 'new-project', label: 'Nuevo proyecto', path: ROUTES.newProject, icon: Plus },
+    ]
+    const sections: Result[] = [...primaryNav, ...shortcuts, ...railNav.filter((m) => m.path !== '/'), settingsModule]
       .filter((n) => !q || matches(q, n.label))
       .map((n) => ({ id: `nav-${n.id}`, group: 'Secciones', title: n.label, href: n.path, icon: n.icon }))
 
@@ -54,7 +58,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
     const projects: Result[] = workspace.projects
       .filter((p) => {
         if (!q) return p.operationalStatus === 'in-progress'
-        const assignee = workspace.assigneeById.get(p.assigneeId)?.name ?? ''
+        const assignee = workspace.personById.get(p.beneficiaryId)?.name ?? ''
         const client = workspace.clientById.get(p.clientId)?.name ?? ''
         return matches(q, p.code, assignee, client, p.destination.city, countryNames[p.destination.country])
       })
@@ -62,7 +66,7 @@ function SearchPanel({ onClose }: { onClose: () => void }) {
       .map((p) => ({
         id: p.id,
         group: q ? 'Proyectos' : 'Proyectos en curso',
-        title: `${p.code} · ${workspace.assigneeById.get(p.assigneeId)?.name ?? ''}`,
+        title: `${p.code} · ${workspace.personById.get(p.beneficiaryId)?.name ?? ''}`,
         subtitle: `${workspace.clientById.get(p.clientId)?.name} — ${p.origin.city} → ${p.destination.city}`,
         href: projectPath(p.id),
         icon: BriefcaseBusiness,

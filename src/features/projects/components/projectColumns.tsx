@@ -5,7 +5,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import type { Column } from '@/components/ui/DataTable'
 import { countryNames, financialStatusMeta, operationalStatusMeta } from '@/config/catalogs'
 import { projectPath } from '@/config/navigation'
-import type { Workspace } from '@/hooks/useWorkspace'
+import { projectFamily, type Workspace } from '@/hooks/useWorkspace'
 import { formatDate } from '@/lib/dates'
 import type { Project } from '@/types/domain'
 
@@ -47,11 +47,12 @@ export function projectColumns(ws: Workspace, ids: ProjectColumnId[]): Column<Pr
       header: 'Beneficiario',
       width: '15%',
       cell: (p) => {
-        const a = ws.assigneeById.get(p.assigneeId)
+        const a = ws.personById.get(p.beneficiaryId)
+        const family = projectFamily(ws, p.id).length
         return (
           <span className="block min-w-0">
             <span className="block truncate font-medium">{a?.name}</span>
-            {a && a.family.length > 0 && <span className="block text-[12px] text-muted">+{a.family.length} familiares</span>}
+            {family > 0 && <span className="block text-[12px] text-muted">+{family} {family === 1 ? 'familiar' : 'familiares'}</span>}
           </span>
         )
       },

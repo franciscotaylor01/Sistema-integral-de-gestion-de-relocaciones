@@ -8,7 +8,8 @@ import type { Project } from '@/types/domain'
 export function ActiveProjectsCard({ projects }: { projects: Project[] }) {
   const active = projects.filter(isActiveProject)
   const services = active.flatMap((p) => p.services)
-  const stages = services.flatMap((s) => s.stages)
+  // Progress counts workflow stages of services and of their procedures.
+  const stages = services.flatMap((s) => [...s.stages, ...s.procedures.flatMap((p) => p.stages)])
   const done = stages.filter((s) => s.status === 'done').length
   const blocked = services.filter((s) => s.status === 'blocked').length
   const running = services.filter((s) => s.status === 'in-progress').length

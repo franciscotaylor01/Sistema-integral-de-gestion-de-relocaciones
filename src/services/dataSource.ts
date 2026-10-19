@@ -1,81 +1,46 @@
-import {
-  mockActivity,
-  mockAlerts,
-  mockAssignees,
-  mockClients,
-  mockCurrencyIndicators,
-  mockCurrentUser,
-  mockDocuments,
-  mockInvoices,
-  mockNotifications,
-  mockPayables,
-  mockPayments,
-  mockProjects,
-  mockStaff,
-  mockSuppliers,
-} from '@/data/mock'
-import type {
-  ActivityEvent,
-  Alert,
-  Assignee,
-  Client,
-  CurrencyIndicator,
-  Invoice,
-  Notification,
-  Payment,
-  Project,
-  ProjectDocument,
-  StaffMember,
-  Supplier,
-  SupplierPayable,
-  UserProfile,
-} from '@/types/domain'
+import type { Dataset } from '@/domain/dataset'
+import type { NewProcedureInput, ProcedurePatch } from '@/domain/procedures'
+import type { NewProjectInput, ProjectPatch } from '@/domain/projects'
+import type { NewServiceInput, ServicePatch } from '@/domain/services'
+import type { NewTaskInput, TaskPatch } from '@/domain/tasks'
+import type { OpenStatus, StageAction, WorkScope } from '@/domain/workItems'
+import type { Notification, UserProfile } from '@/types/domain'
+import { createLocalDataSource } from './local/localDataSource'
+import type { LoadIssue } from './local/storage'
+
+export type CommandResult<T = object> = { dataset: Dataset } & T
 
 /**
- * The single seam between UI and data (same pattern as Vertix). Every feature
- * reads through this interface, so a Supabase implementation can replace
- * `mockDataSource` later without touching components. Methods are async on
- * purpose: screens already handle loading and empty states.
+ * The single seam between UI and data (same pattern as Vertix). Screens read
+ * the dataset and run commands through this interface only, so the local demo
+ * adapter can be replaced by a Supabase implementation without UI changes.
+ * Validation errors are thrown as `DomainError` (with per-field messages).
  */
 export interface SigrDataSource {
+  loadDataset(): Promise<{ dataset: Dataset; issue?: LoadIssue; persistent: boolean }>
   getCurrentUser(): Promise<UserProfile>
-  listStaff(): Promise<StaffMember[]>
-  listClients(): Promise<Client[]>
-  listAssignees(): Promise<Assignee[]>
-  listSuppliers(): Promise<Supplier[]>
-  listProjects(): Promise<Project[]>
-  listDocuments(): Promise<ProjectDocument[]>
-  listActivity(): Promise<ActivityEvent[]>
-  listInvoices(): Promise<Invoice[]>
-  listPayables(): Promise<SupplierPayable[]>
-  listPayments(): Promise<Payment[]>
-  listCurrencyIndicators(): Promise<CurrencyIndicator[]>
-  listAlerts(): Promise<Alert[]>
   listNotifications(): Promise<Notification[]>
+
+  createProject(input: NewProjectInput, requestId: string): Promise<CommandResult<{ projectId: string; duplicate: boolean }>>
+  updateProject(projectId: string, patch: ProjectPatch): Promise<CommandResult>
+  addProjectNote(projectId: string, text: string): Promise<CommandResult>
+
+  addService(projectId: string, input: NewServiceInput): Promise<CommandResult<{ serviceId: string }>>
+  updateService(serviceId: string, patch: ServicePatch): Promise<CommandResult>
+  addProcedure(serviceId: string, input: NewProcedureInput): Promise<CommandResult<{ procedureId: string }>>
+  updateProcedure(procedureId: string, patch: ProcedurePatch): Promise<CommandResult>
+
+  setWorkStatus(scope: WorkScope, status: OpenStatus): Promise<CommandResult>
+  completeWork(scope: WorkScope, options: { closeOpenStages: boolean }): Promise<CommandResult>
+  reopenWork(scope: WorkScope, reason: string): Promise<CommandResult>
+  addWorkNote(scope: WorkScope, text: string): Promise<CommandResult>
+  applyStageAction(scope: WorkScope, action: StageAction): Promise<CommandResult>
+
+  createTask(input: NewTaskInput): Promise<CommandResult<{ taskId: string }>>
+  updateTask(taskId: string, patch: TaskPatch): Promise<CommandResult>
+
+  /** Discards local changes and restores the original demo dataset. */
+  resetDemoData(): Promise<CommandResult>
 }
 
-/** Simulated network latency so loading states are visible in the demo. */
-const LATENCY_MS = 420
-
-function resolve<T>(value: T): Promise<T> {
-  return new Promise((done) => setTimeout(() => done(value), LATENCY_MS))
-}
-
-export const mockDataSource: SigrDataSource = {
-  getCurrentUser: () => resolve(mockCurrentUser),
-  listStaff: () => resolve(mockStaff),
-  listClients: () => resolve(mockClients),
-  listAssignees: () => resolve(mockAssignees),
-  listSuppliers: () => resolve(mockSuppliers),
-  listProjects: () => resolve(mockProjects),
-  listDocuments: () => resolve(mockDocuments),
-  listActivity: () => resolve(mockActivity),
-  listInvoices: () => resolve(mockInvoices),
-  listPayables: () => resolve(mockPayables),
-  listPayments: () => resolve(mockPayments),
-  listCurrencyIndicators: () => resolve(mockCurrencyIndicators),
-  listAlerts: () => resolve(mockAlerts),
-  listNotifications: () => resolve(mockNotifications),
-}
-
-export const dataSource: SigrDataSource = mockDataSource
+export const dataSource: SigrDataSource = createLocalDataSource()

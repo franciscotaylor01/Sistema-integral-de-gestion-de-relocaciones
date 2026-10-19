@@ -1,4 +1,4 @@
-import type { Assignee } from '@/types/domain'
+import type { Assignee } from './seedTypes'
 
 /* Fictional relocated employees and families — demo data only. */
 

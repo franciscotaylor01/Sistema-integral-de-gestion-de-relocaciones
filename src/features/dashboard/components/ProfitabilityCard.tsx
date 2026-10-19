@@ -1,9 +1,8 @@
 import { ArrowUpRight, Plus } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 import { Link } from 'react-router'
-import { useToast } from '@/components/feedback/useToast'
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber'
-import { Button, ButtonLink } from '@/components/ui/Button'
+import { ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { CurrencyFlag } from '@/components/ui/Flag'
 import { MetaBadge } from '@/components/ui/MetaBadge'
@@ -27,7 +26,6 @@ interface MarginRow {
  * active portfolio (agreed prices minus expected supplier costs).
  */
 export function ProfitabilityCard({ projects }: { projects: Project[] }) {
-  const { notify } = useToast()
   const { active, rows } = useMemo(() => {
     const active = projects.filter(isActiveProject)
     const budget = sumByCurrency(active, (p) => p.currency, projectBudget)
@@ -66,16 +64,10 @@ export function ProfitabilityCard({ projects }: { projects: Project[] }) {
       </div>
 
       <div className="mt-[20px] grid grid-cols-2 gap-[14px]">
-        <Button
-          variant="primary"
-          className="px-3"
-          onClick={() =>
-            notify({ title: 'Alta de proyectos en preparación', description: 'El formulario de nuevo proyecto llegará con la integración de datos.' })
-          }
-        >
+        <ButtonLink to={ROUTES.newProject} variant="primary" className="px-3">
           <Plus aria-hidden className="size-[17px]" strokeWidth={2} />
           Nuevo proyecto
-        </Button>
+        </ButtonLink>
         <ButtonLink to={ROUTES.projects} variant="secondary" className="px-3">
           <ArrowUpRight aria-hidden className="size-[17px]" strokeWidth={2} />
           Proyectos

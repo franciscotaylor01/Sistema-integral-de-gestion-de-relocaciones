@@ -392,7 +392,7 @@ function CostsView({ workspace, currency, q = '' }: ViewProps) {
     .filter(
       (p) =>
         (!currency || p.currency === currency) &&
-        matches(q, p.code, workspace.clientById.get(p.clientId)?.name, workspace.assigneeById.get(p.assigneeId)?.name),
+        matches(q, p.code, workspace.clientById.get(p.clientId)?.name, workspace.personById.get(p.beneficiaryId)?.name),
     )
     .sort((a, b) => b.startDate.localeCompare(a.startDate))
   const recorded = (p: Project) => workspace.payables.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.amount, 0)

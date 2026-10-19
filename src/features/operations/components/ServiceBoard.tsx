@@ -4,19 +4,20 @@ import { Flag } from '@/components/ui/Flag'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ServiceChip } from '@/components/ui/ServiceChip'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { serviceStatusMeta, serviceTypeMeta } from '@/config/catalogs'
+import { serviceStatusMeta} from '@/config/catalogs'
 import { projectPath } from '@/config/navigation'
 import { currentStageLabel, serviceProgress } from '@/features/projects/selectors'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
 import { daysUntil, formatRelativeDays } from '@/lib/dates'
 import { formatPercent } from '@/lib/format'
-import type { Assignee, Project, ProjectService, ServiceStatus } from '@/types/domain'
+import type { Person, Project, ProjectService, ServiceStatus } from '@/types/domain'
+import { getServiceType } from '@/config/serviceCatalog'
 
 export interface ServiceRow {
   service: ProjectService
   project: Project
-  assignee: Assignee | undefined
+  assignee: Person | undefined
 }
 
 const COLUMNS: ServiceStatus[] = ['not-started', 'in-progress', 'waiting', 'blocked', 'completed']
@@ -33,7 +34,7 @@ export function ServiceCard({ row, workspace }: { row: ServiceRow; workspace: Wo
     >
       <div className="flex items-center gap-[10px]">
         <ServiceChip type={s.type} />
-        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{serviceTypeMeta[s.type].label}</span>
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium">{getServiceType(s.type).label}</span>
       </div>
       <p className="mt-[8px] truncate text-[13px] text-ink-secondary">
         <span className="tabular font-medium text-ink">{p.code}</span> · {assignee?.name}
@@ -47,7 +48,7 @@ export function ServiceCard({ row, workspace }: { row: ServiceRow; workspace: Wo
           value={pct}
           size="sm"
           className="flex-1"
-          label={`Avance de ${serviceTypeMeta[s.type].label} en ${p.code}`}
+          label={`Avance de ${getServiceType(s.type).label} en ${p.code}`}
           valueText={formatPercent(pct)}
           tone={s.status === 'blocked' ? 'danger' : s.status === 'completed' ? 'success' : 'accent'}
         />

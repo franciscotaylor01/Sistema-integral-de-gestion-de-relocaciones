@@ -3,6 +3,7 @@ import { AnimatedOutlet } from './AnimatedOutlet'
 import { Header } from './Header'
 import { MobileNav } from './MobileNav'
 import { Sidebar } from './Sidebar'
+import { StorageNotice } from './StorageNotice'
 
 export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
@@ -23,6 +24,7 @@ export function AppShell() {
         </main>
       </div>
       <MobileNav open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <StorageNotice />
     </div>
   )
 }

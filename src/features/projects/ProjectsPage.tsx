@@ -2,8 +2,7 @@ import { BriefcaseBusiness, FilterX, Plus } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useMemo } from 'react'
 import { useSearchParams } from 'react-router'
-import { useToast } from '@/components/feedback/useToast'
-import { Button } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -13,14 +12,15 @@ import { SearchField } from '@/components/ui/SearchField'
 import { ServiceChip } from '@/components/ui/ServiceChip'
 import { TableSkeleton } from '@/components/ui/Skeleton'
 import { Tabs } from '@/components/ui/Tabs'
-import { countryNames, financialStatusMeta, operationalStatusMeta, serviceTypeMeta } from '@/config/catalogs'
-import { projectPath } from '@/config/navigation'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { countryNames, financialStatusMeta, operationalStatusMeta} from '@/config/catalogs'
+import { projectPath, ROUTES } from '@/config/navigation'
+import { projectFamily, useWorkspace } from '@/hooks/useWorkspace'
 import { cardVariants } from '@/lib/motion'
 import { matches } from '@/lib/search'
-import type { Project, ProjectFinancialStatus, ServiceType } from '@/types/domain'
+import type { Project, ProjectFinancialStatus} from '@/types/domain'
 import { projectColumns } from './components/projectColumns'
 import { isActiveProject } from './selectors'
+import { getServiceType, serviceCatalog } from '@/config/serviceCatalog'
 
 type StatusFilter = 'todos' | 'activos' | 'onboarding' | 'in-progress' | 'on-hold' | 'completed'
 
@@ -38,7 +38,6 @@ const PARAMS = ['q', 'estado', 'finanzas', 'cliente', 'servicio', 'responsable',
 
 export function ProjectsPage() {
   const { workspace, loading } = useWorkspace()
-  const { notify } = useToast()
   const [params, setParams] = useSearchParams()
 
   const q = params.get('q') ?? ''
@@ -73,13 +72,13 @@ export function ProjectsPage() {
       if (owner && p.ownerId !== owner && !p.services.some((s) => s.ownerId === owner)) return false
       if (destination && p.destination.country !== destination) return false
       if (q) {
-        const a = workspace.assigneeById.get(p.assigneeId)
+        const a = workspace.personById.get(p.beneficiaryId)
         const c = workspace.clientById.get(p.clientId)
         return matches(
           q,
           p.code,
           a?.name,
-          a?.family.map((f) => f.name).join(' '),
+          projectFamily(workspace, p.id).map((f) => f.person.name).join(' '),
           c?.name,
           p.origin.city,
           p.destination.city,
@@ -108,14 +107,10 @@ export function ProjectsPage() {
         title="Proyectos"
         description="Cada proyecto es una relocación: un beneficiario, su familia y todos los servicios contratados."
         actions={
-          <Button
-            onClick={() =>
-              notify({ title: 'Alta de proyectos en preparación', description: 'El formulario de nuevo proyecto llegará con la integración de datos.' })
-            }
-          >
+          <ButtonLink to={ROUTES.newProject}>
             <Plus aria-hidden className="size-[17px]" strokeWidth={2} />
             Nuevo proyecto
-          </Button>
+          </ButtonLink>
         }
       />
 
@@ -155,9 +150,9 @@ export function ProjectsPage() {
               label="Servicio"
               value={service}
               onChange={(v) => setParam('servicio', v)}
-              options={(Object.keys(serviceTypeMeta) as ServiceType[]).map((t) => ({
+              options={serviceCatalog.map(({ id: t }) => ({
                 value: t,
-                label: serviceTypeMeta[t].label,
+                label: getServiceType(t).label,
                 icon: <ServiceChip type={t} />,
               }))}
             />

@@ -8,7 +8,7 @@ interface ToastItem extends ToastInput {
   id: number
 }
 
-const TOAST_MS = 4200
+const TOAST_MS = 3600
 
 /**
  * Lightweight toasts for actions not wired in Phase 1 (e.g. "Nuevo proyecto"),
@@ -23,7 +23,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const notify = useCallback(
     (toast: ToastInput) => {
       const id = nextId.current++
-      setToasts((list) => [...list.slice(-2), { ...toast, id }])
+      setToasts((list) => [...list.slice(-1), { ...toast, id }])
       window.setTimeout(() => dismiss(id), TOAST_MS)
     },
     [dismiss],

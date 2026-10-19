@@ -16,7 +16,7 @@ import { ServiceChip } from '@/components/ui/ServiceChip'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TabPanel, Tabs } from '@/components/ui/Tabs'
-import { clientStatusMeta, countryNames, serviceTypeMeta } from '@/config/catalogs'
+import { clientStatusMeta, countryNames} from '@/config/catalogs'
 import { projectPath, ROUTES } from '@/config/navigation'
 import { invoiceColumns } from '@/features/finance/components/ledgerColumns'
 import { invoiceOutstanding, summarizeLedger } from '@/features/finance/selectors'
@@ -30,6 +30,7 @@ import { formatCurrency } from '@/lib/format'
 import { currencyEntries } from '@/lib/money'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 import type { PriceListItem } from '@/types/domain'
+import { getServiceType } from '@/config/serviceCatalog'
 
 const TABS = ['empresa', 'contactos', 'proyectos', 'tarifario', 'facturas', 'saldos'] as const
 type ClientTab = (typeof TABS)[number]
@@ -278,7 +279,7 @@ export function ClientDetailPage() {
                             cell: (i) => (
                               <span className="flex items-center gap-[10px]">
                                 <ServiceChip type={i.serviceType} />
-                                <span className="font-medium">{serviceTypeMeta[i.serviceType].label}</span>
+                                <span className="font-medium">{getServiceType(i.serviceType).label}</span>
                               </span>
                             ),
                           },

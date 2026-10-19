@@ -1,10 +1,10 @@
-import { serviceTypeMeta } from '@/config/catalogs'
 import { cn } from '@/lib/cn'
 import type { ServiceType } from '@/types/domain'
+import { getServiceType } from '@/config/serviceCatalog'
 
 /** Gradient icon square — the Vertix activity-category treatment. */
 export function ServiceChip({ type, size = 'sm', className }: { type: ServiceType; size?: 'sm' | 'md'; className?: string }) {
-  const meta = serviceTypeMeta[type]
+  const meta = getServiceType(type)
   return (
     <span
       aria-hidden
@@ -26,7 +26,7 @@ export function ServiceChipStack({ types, max = 4 }: { types: ServiceType[]; max
   const visible = types.slice(0, max)
   const rest = types.length - visible.length
   return (
-    <span className="flex items-center" aria-label={types.map((t) => serviceTypeMeta[t].label).join(', ')} role="img">
+    <span className="flex items-center" aria-label={types.map((t) => getServiceType(t).label).join(', ')} role="img">
       {visible.map((t, i) => (
         <ServiceChip key={`${t}-${i}`} type={t} className={cn('ring-2 ring-surface', i > 0 && '-ml-[5px]')} />
       ))}

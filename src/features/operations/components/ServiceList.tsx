@@ -2,7 +2,7 @@ import { DataTable } from '@/components/ui/DataTable'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 import { ServiceChip } from '@/components/ui/ServiceChip'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { serviceStatusMeta, serviceTypeMeta } from '@/config/catalogs'
+import { serviceStatusMeta} from '@/config/catalogs'
 import { projectPath } from '@/config/navigation'
 import { currentStageLabel, serviceProgress } from '@/features/projects/selectors'
 import type { Workspace } from '@/hooks/useWorkspace'
@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn'
 import { daysUntil, formatDate, formatRelativeDays } from '@/lib/dates'
 import { formatPercent } from '@/lib/format'
 import type { ServiceRow } from './ServiceBoard'
+import { getServiceType } from '@/config/serviceCatalog'
 
 export function ServiceList({ rows, workspace }: { rows: ServiceRow[]; workspace: Workspace }) {
   const sorted = [...rows].sort((a, b) => a.service.dueDate.localeCompare(b.service.dueDate))
@@ -28,7 +29,7 @@ export function ServiceList({ rows, workspace }: { rows: ServiceRow[]; workspace
           cell: ({ service: s }) => (
             <span className="flex items-center gap-[10px]">
               <ServiceChip type={s.type} />
-              <span className="truncate font-medium">{serviceTypeMeta[s.type].label}</span>
+              <span className="truncate font-medium">{getServiceType(s.type).label}</span>
             </span>
           ),
         },
