@@ -9,6 +9,9 @@ import type {
   Invoice,
   Payment,
   Person,
+  PriceEntry,
+  PurchaseOrder,
+  Quotation,
   Procedure,
   Project,
   ProjectDocument,
@@ -39,6 +42,11 @@ export interface Workspace {
   payments: Payment[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
+  priceEntries: PriceEntry[]
+  quotations: Quotation[]
+  purchaseOrders: PurchaseOrder[]
+  quotationById: Map<string, Quotation>
+  purchaseOrderById: Map<string, PurchaseOrder>
   clientById: Map<string, Client>
   personById: Map<string, Person>
   staffById: Map<string, StaffMember>
@@ -91,6 +99,11 @@ export function deriveWorkspace(ds: Dataset): Workspace {
     payments: ds.payments,
     currencyIndicators: ds.currencyIndicators,
     alerts: ds.alerts,
+    priceEntries: ds.priceEntries,
+    quotations: ds.quotations,
+    purchaseOrders: ds.purchaseOrders,
+    quotationById: byId(ds.quotations),
+    purchaseOrderById: byId(ds.purchaseOrders),
     clientById: byId(ds.clients),
     personById: byId(ds.people),
     staffById: byId(ds.staff),

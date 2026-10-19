@@ -44,6 +44,8 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/clients/ClientDetailPage').then((m) => ({ Component: m.ClientDetailPage })),
       },
       { path: 'operaciones', lazy: () => import('@/features/operations/OperationsPage').then((m) => ({ Component: m.OperationsPage })) },
+      { path: 'cotizaciones/:quotationId', lazy: () => import('@/features/commercial/QuotationPage').then((m) => ({ Component: m.QuotationPage })) },
+      { path: 'ordenes-compra/:poId', lazy: () => import('@/features/commercial/PurchaseOrderPage').then((m) => ({ Component: m.PurchaseOrderPage })) },
       { path: 'tareas', lazy: () => import('@/features/tasks/TasksPage').then((m) => ({ Component: m.TasksPage })) },
       { path: 'finanzas', lazy: () => import('@/features/finance/FinancePage').then((m) => ({ Component: m.FinancePage })) },
       ...upcomingModules,

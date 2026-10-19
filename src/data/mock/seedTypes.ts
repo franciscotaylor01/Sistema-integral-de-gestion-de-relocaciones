@@ -1,4 +1,4 @@
-import type { CountryCode, ProjectFinancialStatus, ProjectOperationalStatus, ProjectRecord, ServiceStatus, TaskStatus } from '@/types/domain'
+import type { Client, CommercialPolicy, CountryCode, PriceEntry, PriceList, ProjectFinancialStatus, QuotationStatus, ProjectOperationalStatus, ProjectRecord, ServiceStatus, TaskStatus } from '@/types/domain'
 
 /*
  * Compact shapes used to author the demo seed. `data/seed.ts` turns them into
@@ -69,4 +69,48 @@ export interface TaskSeed {
   waitingOn?: string
   due?: string
   completedAt?: string
+}
+
+/** Client as authored in Phase 1 mocks (price lists inline). */
+export type ClientSeed = Omit<Client, 'policy' | 'billingAddress' | 'notes'> & { priceLists: PriceList[] }
+
+export interface ClientCommercialSeed {
+  billingAddress: string
+  policy: CommercialPolicy
+  notes?: string
+}
+
+export type PriceEntrySeed = Omit<PriceEntry, 'createdAt' | 'updatedAt'>
+
+export interface QuotationSeed {
+  id: string
+  number: string
+  version: number
+  previousVersionId?: string
+  projectId: string
+  status: QuotationStatus
+  issueDate: string
+  validUntil: string
+  sentAt?: string
+  approvedAt?: string
+  approvedBy?: string
+  rejectionReason?: string
+  supersededById?: string
+  /** Unit price overrides by service id (default: the service's agreed price). */
+  prices?: Record<string, number>
+  notes?: string
+}
+
+export interface PurchaseOrderSeed {
+  id: string
+  internalNumber: string
+  clientPoNumber: string
+  projectId: string
+  quotationId: string
+  issueDate: string
+  receivedDate: string
+  authorizedAmount: number
+  /** Allocations by service id. */
+  allocations: Record<string, number>
+  documentLabel?: string
 }

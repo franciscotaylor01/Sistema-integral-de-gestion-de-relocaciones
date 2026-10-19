@@ -1,4 +1,11 @@
 import { Pencil, Plus } from 'lucide-react'
+import { Link } from 'react-router'
+import { AmountsText } from '@/components/ui/Amounts'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { DEMO_TODAY } from '@/config/brand'
+import { commercialStageMeta } from '@/config/commercial'
+import { hasAmount } from '@/domain/commercial/money'
+import { projectCommercial } from '@/domain/commercial/traceability'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -47,6 +54,7 @@ export function ServiceCard({ service: s, project, workspace, documents, onEdit,
   const issues = documents.filter((d) => d.serviceId === s.id && (d.status === 'expired' || d.status === 'missing'))
   const active = currentStage(s.stages)
   const prefix = `svc-${s.id}`
+  const commercial = projectCommercial(workspace.dataset, project, DEMO_TODAY).get(s.id)!
 
   return (
     <Card aria-labelledby={`${s.id}-title`} className="px-[20px] pb-[20px] pt-[18px]">
@@ -87,8 +95,17 @@ export function ServiceCard({ service: s, project, workspace, documents, onEdit,
             </span>
           )}
         </Fact>
-        <Fact label="Precio acordado">
-          {s.price !== undefined ? <span className="tabular">{formatCurrency(s.price, project.currency)}</span> : <span className="text-muted">A cotizar</span>}
+        <Fact label="Comercial">
+          <Link to={`?tab=finanzas`} className="inline-flex items-center gap-[6px] hover:underline" title="Ver estado comercial">
+            <StatusBadge meta={commercialStageMeta[commercial.stage]} className="text-[13.5px]" />
+          </Link>
+          {hasAmount(commercial.approved) ? (
+            <span className="block text-[12.5px] font-normal text-muted">
+              Aprobado <AmountsText inline amounts={commercial.approved} />
+            </span>
+          ) : (
+            s.price !== undefined && <span className="tabular block text-[12.5px] font-normal text-muted">Ref. {formatCurrency(s.price, project.currency)}</span>
+          )}
         </Fact>
       </dl>
 

@@ -12,6 +12,7 @@ import { summarizeLedger } from '@/features/finance/selectors'
 import { formatCompactCurrency, formatCurrency, formatPercent } from '@/lib/format'
 import type { ProjectService } from '@/types/domain'
 import { PreviewBanner } from '../components/PreviewBanner'
+import { CommercialSection } from './CommercialSection'
 import type { ProjectContext } from '../projectContext'
 import { projectBudget, projectEstimatedCost } from '../selectors'
 import { getServiceType } from '@/config/serviceCatalog'
@@ -27,8 +28,9 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
 
   return (
     <div className="flex flex-col gap-[24px]">
+      <CommercialSection ctx={ctx} />
       <PreviewBanner>
-        Cotizaciones, órdenes de compra, facturación y liquidaciones se habilitarán en la fase financiera. Los importes son datos ficticios de referencia.
+        Facturación, cobranzas, costos de proveedores y liquidaciones se habilitarán en la Fase 4. Los importes de esta sección son datos ficticios de referencia.
       </PreviewBanner>
       <Card aria-label="Indicadores financieros del proyecto" className="grid grid-cols-1 gap-[14px] p-[18px] sm:grid-cols-2 xl:grid-cols-5">
         <StatTile

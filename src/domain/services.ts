@@ -7,6 +7,7 @@ import type { Dataset } from './dataset'
 import { DomainError, isIsoDate } from './errors'
 import { spawnStageTasks } from './tasks'
 import { instantiateStages } from './workflow'
+import { resolvePrice } from './commercial/pricing'
 
 export interface NewServiceInput {
   typeId: string
@@ -45,18 +46,16 @@ export function validateServiceInput(
   return f
 }
 
-/** Reference price from the client's price list in the project currency, if any. */
-function priceFromList(ds: Dataset, project: ProjectRecord, typeId: string) {
-  const client = findById(ds.clients, project.clientId)
-  const list = client?.priceLists.find((pl) => pl.currency === project.currency && pl.items.some((i) => i.serviceType === typeId))
-  const item = list?.items.find((i) => i.serviceType === typeId)
-  return list && item ? { price: item.price, priceListId: list.id } : undefined
+/** Reference price from the client's tariff — only when exactly one rule applies. */
+function priceFromList(ds: Dataset, project: ProjectRecord, typeId: string, date: string) {
+  const res = resolvePrice(ds, { clientId: project.clientId, serviceTypeId: typeId, market: project.destination.country, currency: project.currency, date, quantity: 1 })
+  return res.status === 'unique' ? { price: res.entry.unitPrice, priceEntryId: res.entry.id } : undefined
 }
 
 /** Builds a service record (no activity) — shared by project creation and addService. */
 export function buildService(ds: Dataset, project: ProjectRecord, input: NewServiceInput, ctx: DomainContext): ServiceRecord {
   const type = getServiceType(input.typeId)
-  const fromList = input.price === undefined ? priceFromList(ds, project, input.typeId) : undefined
+  const fromList = input.price === undefined ? priceFromList(ds, project, input.typeId, input.startDate) : undefined
   return {
     id: ctx.newId('svc'),
     projectId: project.id,
@@ -70,7 +69,7 @@ export function buildService(ds: Dataset, project: ProjectRecord, input: NewServ
     stages: instantiateStages(type.workflowTemplateId, input.startDate, input.dueDate, ctx, { activateFirst: input.startNow }),
     notes: [],
     price: input.price ?? fromList?.price,
-    financial: fromList ? { priceListId: fromList.priceListId } : undefined,
+    financial: fromList ? { priceListId: fromList.priceEntryId } : undefined,
   }
 }
 

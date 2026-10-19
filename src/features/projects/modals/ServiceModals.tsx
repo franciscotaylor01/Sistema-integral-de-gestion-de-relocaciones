@@ -121,8 +121,14 @@ function AddServiceForm({ onClose, project, ws }: { onClose: () => void; project
       <Switch checked={startNow} onChange={setStartNow} label="Iniciar workflow ahora" description="La primera etapa queda en curso y se crean sus tareas." />
       {ref && (
         <p className="rounded-[14px] bg-surface-muted px-[14px] py-[10px] text-[13px] text-ink-secondary">
-          Precio de referencia según «{ref.listName}»: <span className="tabular font-semibold">{formatCurrency(ref.price, project.currency)}</span>. Se registra
-          como referencia; la cotización formal llegará en la fase financiera.
+          {ref.price !== undefined ? (
+            <>
+              Precio de referencia según «{ref.listName}»: <span className="tabular font-semibold">{formatCurrency(ref.price, project.currency)}</span>. El
+              precio comercial se fija en la cotización.
+            </>
+          ) : (
+            <>Hay {ref.resolution.candidates.length} tarifas superpuestas para este servicio: el precio se definirá al cotizar.</>
+          )}
         </p>
       )}
       <Footer onClose={onClose} busy={busy} label="Agregar servicio" />

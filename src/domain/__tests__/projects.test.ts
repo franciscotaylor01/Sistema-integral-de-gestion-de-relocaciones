@@ -35,8 +35,11 @@ describe('createProject', () => {
     const tasks = next.tasks.filter((t) => t.projectId === projectId)
     expect(tasks).toHaveLength(2)
     expect(tasks.every((t) => t.serviceId === services[0].id && t.stageId === services[0].stages[0].id)).toBe(true)
-    // Price prefilled from the client's price list.
-    expect(services[0].price).toBe(5200)
+    // Price prefilled only when exactly one tariff applies: Nordvik has two
+    // overlapping immigration rules from October (ambiguous → left empty),
+    // and a market-specific housing price for Argentina.
+    expect(services[0].price).toBeUndefined()
+    expect(services[1].price).toBe(4500)
     expect(next.activity[0].projectId).toBe(projectId)
   })
 

@@ -1,4 +1,5 @@
 import { SCHEMA_VERSION, type Dataset } from '@/domain/dataset'
+import { migrateDataset } from './migrations'
 
 /*
  * Browser persistence for the fictional demo dataset only. Never store real
@@ -20,11 +21,12 @@ interface Envelope {
   data: Dataset
 }
 
-export type LoadIssue = 'corrupted' | 'outdated' | 'invalid'
+export type LoadIssue = 'corrupted' | 'outdated' | 'invalid' | 'migrated'
 
 const COLLECTIONS = [
   'staff', 'clients', 'suppliers', 'people', 'participants', 'projects', 'services', 'procedures',
   'tasks', 'activity', 'documents', 'invoices', 'payables', 'payments', 'currencyIndicators', 'alerts',
+  'priceEntries', 'quotations', 'purchaseOrders',
 ] as const
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -40,13 +42,18 @@ export function isValidDataset(x: unknown): x is Dataset {
   const projects = ids(d.projects)
   const services = ids(d.services)
   const people = ids(d.people)
+  const clients = ids(d.clients)
   const stagesOk = (s: unknown) => Array.isArray(s) && s.every((st) => isObj(st) && str(st.id) && str(st.label) && ['pending', 'current', 'done'].includes(st.status as string))
   return (
     d.projects.every((p) => str(p.code) && str(p.clientId) && people.has(p.beneficiaryId) && str(p.startDate) && str(p.targetDate)) &&
     d.services.every((s) => projects.has(s.projectId) && str(s.typeId) && stagesOk(s.stages) && Array.isArray(s.notes)) &&
     d.procedures.every((p) => services.has(p.serviceId) && people.has(p.personId) && stagesOk(p.stages) && Array.isArray(p.notes)) &&
     d.tasks.every((t) => projects.has(t.projectId) && services.has(t.serviceId) && str(t.title)) &&
-    d.participants.every((p) => projects.has(p.projectId) && people.has(p.personId))
+    d.participants.every((p) => projects.has(p.projectId) && people.has(p.personId)) &&
+    d.clients.every((c) => isObj(c) && str(c.id) && isObj(c.policy) && Array.isArray(c.contacts)) &&
+    d.priceEntries.every((e) => clients.has(e.clientId) && str(e.serviceTypeId) && typeof e.unitPrice === 'number') &&
+    d.quotations.every((q) => projects.has(q.projectId) && str(q.number) && Array.isArray(q.lines)) &&
+    d.purchaseOrders.every((po) => projects.has(po.projectId) && clients.has(po.clientId) && Array.isArray(po.allocations) && po.allocations.every((a) => services.has(a.serviceId)))
   )
 }
 
@@ -66,8 +73,18 @@ export function readDataset(storage: StorageLike | undefined): { dataset?: Datas
     return { issue: 'corrupted' }
   }
   if (!isObj(parsed) || !('data' in parsed)) return { issue: 'corrupted' }
-  if (parsed.schemaVersion !== SCHEMA_VERSION) return { issue: 'outdated' }
-  return isValidDataset(parsed.data) ? { dataset: parsed.data } : { issue: 'invalid' }
+  const version = typeof parsed.schemaVersion === 'number' ? parsed.schemaVersion : 0
+  if (version === SCHEMA_VERSION) return isValidDataset(parsed.data) ? { dataset: parsed.data } : { issue: 'invalid' }
+  if (version < SCHEMA_VERSION && version >= 2) {
+    const migrated = migrateDataset(parsed.data, version, SCHEMA_VERSION)
+    if (isValidDataset(migrated)) {
+      // Persist the upgrade so it runs once.
+      writeDataset(storage, migrated, new Date().toISOString())
+      return { dataset: migrated, issue: 'migrated' }
+    }
+    return { issue: 'invalid' }
+  }
+  return { issue: 'outdated' }
 }
 
 /** Returns false when storage is unavailable or full; the app keeps working in memory. */

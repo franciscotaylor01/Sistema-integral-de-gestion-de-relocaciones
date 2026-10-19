@@ -1,5 +1,6 @@
 import type { LucideIcon } from 'lucide-react'
 import { ChevronRight, CircleAlert, Info, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
 import { Link } from 'react-router'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -15,7 +16,10 @@ const severityIcon: Record<AlertSeverity, { icon: LucideIcon; className: string 
   info: { icon: Info, className: 'bg-info-soft text-info' },
 }
 
+const VISIBLE = 6
+
 export function AlertsCard({ alerts }: { alerts: Alert[] }) {
+  const [expanded, setExpanded] = useState(false)
   const critical = alerts.filter((a) => a.severity === 'critical').length
 
   return (
@@ -32,7 +36,7 @@ export function AlertsCard({ alerts }: { alerts: Alert[] }) {
         <EmptyState icon={ShieldCheck} title="Todo en orden" description="No hay alertas activas." />
       ) : (
         <ul className="mt-[20px] grid grid-cols-1 gap-[8px] rounded-panel bg-surface-muted p-[8px] md:grid-cols-2">
-          {alerts.map((a) => {
+          {(expanded ? alerts : alerts.slice(0, VISIBLE)).map((a) => {
             const s = severityIcon[a.severity]
             return (
               <li key={a.id} className="min-w-0">
@@ -63,6 +67,16 @@ export function AlertsCard({ alerts }: { alerts: Alert[] }) {
             )
           })}
         </ul>
+      )}
+      {alerts.length > VISIBLE && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-[12px] rounded-full px-[12px] py-[6px] text-[13.5px] font-medium text-ink-secondary transition-colors hover:bg-surface-muted hover:text-ink"
+        >
+          {expanded ? 'Ver menos' : `Ver todas (${alerts.length})`}
+        </button>
       )}
     </Card>
   )

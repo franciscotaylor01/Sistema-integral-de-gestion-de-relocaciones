@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { brand, DEMO_TODAY } from '@/config/brand'
+import { commercialAlerts, sortAlerts } from '@/features/commercial/alerts'
 import { summarizeLedger } from '@/features/finance/selectors'
 import { useQuery } from '@/hooks/useQuery'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -71,7 +72,7 @@ export function DashboardPage() {
 
             <MyTasksCard workspace={workspace} />
             <div className="min-w-0 md:col-span-1 xl:col-span-2">
-              <AlertsCard alerts={workspace.alerts} />
+              <AlertsCard alerts={sortAlerts([...commercialAlerts(workspace), ...workspace.alerts])} />
             </div>
 
             <SupplierPaymentsCard workspace={workspace} />

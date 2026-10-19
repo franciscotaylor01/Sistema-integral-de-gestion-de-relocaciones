@@ -457,7 +457,10 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
         {errors.services && <p className="mt-[8px] text-[12.5px] font-medium text-danger">{errors.services}</p>}
       </div>
       {input.services.map((s, i) => {
-        const ref = client ? referencePrice(ws, { clientId: client.id, currency: client.billingCurrency }, s.typeId) : undefined
+        const ref =
+          client && input.destination.country
+            ? referencePrice(ws, { clientId: client.id, currency: client.billingCurrency, destination: { country: input.destination.country } }, s.typeId, s.startDate)
+            : undefined
         const suppliers = ws.suppliers.filter((x) => x.category === s.typeId)
         const e = (k: string) => errors[`services.${i}.${k}`]
         return (
@@ -506,10 +509,12 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
             <div className="mt-[12px] grid gap-[10px] sm:grid-cols-2">
               <Switch checked={Boolean(s.startNow)} onChange={(v) => setService(i, { startNow: v })} label="Iniciar ahora" description="Activa la primera etapa y crea sus tareas." />
               <p className="flex items-center rounded-[14px] bg-surface px-[14px] py-[11px] text-[13px] text-ink-secondary">
-                {ref && client ? (
+                {ref && client && ref.price !== undefined ? (
                   <span>
                     Tarifario: <span className="tabular font-semibold">{formatCurrency(ref.price, client.billingCurrency)}</span>
                   </span>
+                ) : ref ? (
+                  'Tarifas superpuestas: el precio se definirá al cotizar.'
                 ) : (
                   'Sin precio de tarifario: quedará «a cotizar».'
                 )}

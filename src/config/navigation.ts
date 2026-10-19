@@ -27,6 +27,8 @@ export const ROUTES = {
 
 export const projectPath = (id: string) => `${ROUTES.projects}/${id}`
 export const clientPath = (id: string) => `${ROUTES.clients}/${id}`
+export const quotationPath = (id: string) => `/cotizaciones/${id}`
+export const purchaseOrderPath = (id: string) => `/ordenes-compra/${id}`
 
 /** Primary top-bar sections (Phase 1). */
 export const primaryNav: NavItem[] = [

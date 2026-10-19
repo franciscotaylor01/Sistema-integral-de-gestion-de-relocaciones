@@ -1,9 +1,10 @@
-import { BriefcaseBusiness, Mail, Phone, ReceiptText, Tags, Users, Wallet } from 'lucide-react'
+import { BriefcaseBusiness, FileText, Mail, Pencil, Phone, ReceiptText, Users, Wallet } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router'
 import { BackLink } from '@/components/ui/BackLink'
 import { Avatar } from '@/components/ui/Avatar'
+import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -12,12 +13,15 @@ import { CurrencyFlag, Flag } from '@/components/ui/Flag'
 import { MetaBadge } from '@/components/ui/MetaBadge'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionTitle } from '@/components/ui/SectionTitle'
-import { ServiceChip } from '@/components/ui/ServiceChip'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TabPanel, Tabs } from '@/components/ui/Tabs'
-import { clientStatusMeta, countryNames} from '@/config/catalogs'
-import { projectPath, ROUTES } from '@/config/navigation'
+import { clientStatusMeta, countryNames } from '@/config/catalogs'
+import { billingMilestoneLabel } from '@/config/commercial'
+import { projectPath, purchaseOrderPath, quotationPath, ROUTES } from '@/config/navigation'
+import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/columns'
+import { PriceEntriesPanel } from '@/features/pricing/PriceEntriesPanel'
+import { ClientFormModal } from './components/ClientFormModal'
 import { invoiceColumns } from '@/features/finance/components/ledgerColumns'
 import { invoiceOutstanding, summarizeLedger } from '@/features/finance/selectors'
 import { projectColumns } from '@/features/projects/components/projectColumns'
@@ -25,14 +29,12 @@ import { isActiveProject } from '@/features/projects/selectors'
 import { NotFoundPage } from '@/features/sections/NotFoundPage'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
-import { daysUntil, formatDate } from '@/lib/dates'
+import { formatDate } from '@/lib/dates'
 import { formatCurrency } from '@/lib/format'
 import { currencyEntries } from '@/lib/money'
 import { cardVariants, staggerVariants } from '@/lib/motion'
-import type { PriceListItem } from '@/types/domain'
-import { getServiceType } from '@/config/serviceCatalog'
 
-const TABS = ['empresa', 'contactos', 'proyectos', 'tarifario', 'facturas', 'saldos'] as const
+const TABS = ['empresa', 'contactos', 'proyectos', 'tarifario', 'comercial', 'facturas', 'saldos'] as const
 type ClientTab = (typeof TABS)[number]
 const isTab = (v: string | null): v is ClientTab => TABS.includes(v as ClientTab)
 
@@ -42,6 +44,7 @@ export function ClientDetailPage() {
   const { workspace, loading } = useWorkspace()
   const tabParam = params.get('tab')
   const tab: ClientTab = isTab(tabParam) ? tabParam : 'empresa'
+  const [editing, setEditing] = useState(false)
 
   const data = useMemo(() => {
     const client = workspace?.clientById.get(clientId)
@@ -100,6 +103,12 @@ export function ClientDetailPage() {
             <span>{client.industry}</span>
           </span>
         }
+        actions={
+          <Button onClick={() => setEditing(true)}>
+            <Pencil aria-hidden className="size-[16px]" strokeWidth={1.9} />
+            Editar cliente
+          </Button>
+        }
       />
 
       <motion.div variants={cardVariants} className="mt-[28px]">
@@ -112,7 +121,8 @@ export function ClientDetailPage() {
             { value: 'empresa', label: 'Empresa' },
             { value: 'contactos', label: 'Contactos', count: client.contacts.length },
             { value: 'proyectos', label: 'Proyectos', count: projects.length },
-            { value: 'tarifario', label: 'Tarifario', count: client.priceLists.length },
+            { value: 'tarifario', label: 'Tarifario', count: workspace.priceEntries.filter((e) => e.clientId === client.id).length },
+            { value: 'comercial', label: 'Cotizaciones y OC', count: workspace.quotations.filter((q) => q.clientId === client.id).length + workspace.purchaseOrders.filter((p) => p.clientId === client.id).length },
             { value: 'facturas', label: 'Facturas', count: invoices.length },
             { value: 'saldos', label: 'Saldos', count: openInvoices.length },
           ]}
@@ -154,7 +164,25 @@ export function ClientDetailPage() {
                         ))}
                       </span>
                     </Fact>
+                    <Fact label="Dirección de facturación" className="sm:col-span-2 xl:col-span-3">
+                      <span className="whitespace-normal">{client.billingAddress}</span>
+                    </Fact>
                   </dl>
+                  <h3 className="mt-[20px] text-[15px] font-semibold">Política comercial</h3>
+                  <dl className="mt-[10px] grid grid-cols-1 gap-x-6 gap-y-4 rounded-panel bg-surface-muted px-[16px] py-[16px] sm:grid-cols-2 xl:grid-cols-4">
+                    <Fact label="Orden de compra">{client.policy.requiresPurchaseOrder ? 'Obligatoria' : 'No requerida'}</Fact>
+                    <Fact label="Cotización aprobada">{client.policy.requiresApprovedQuote ? 'Obligatoria' : 'No requerida'}</Fact>
+                    <Fact label="Hito de facturación">
+                      <span className="whitespace-normal">{billingMilestoneLabel[client.policy.billingMilestone]}</span>
+                    </Fact>
+                    <Fact label="Validez de cotizaciones">{client.policy.quoteValidityDays} días</Fact>
+                  </dl>
+                  {client.notes && (
+                    <div className="mt-[16px] rounded-[14px] bg-surface-muted px-[14px] py-[11px]">
+                      <p className="text-[12px] font-medium uppercase tracking-[0.06em] text-subtle">Notas</p>
+                      <p className="mt-[4px] whitespace-pre-wrap text-[14px] leading-[1.5] text-ink-secondary">{client.notes}</p>
+                    </div>
+                  )}
                 </Card>
                 <Card aria-labelledby="cl-glance" className="px-[20px] pb-[20px] pt-[20px]">
                   <SectionTitle id="cl-glance" size="sm" title="Resumen de la cuenta" />
@@ -193,7 +221,17 @@ export function ClientDetailPage() {
 
             {tab === 'contactos' && (
               <Card aria-labelledby="cl-contacts" className="px-[20px] pb-[20px] pt-[20px]">
-                <SectionTitle id="cl-contacts" title="Contactos" description="Personas de referencia en la empresa cliente" />
+                <SectionTitle
+                  id="cl-contacts"
+                  title="Contactos"
+                  description="Personas de referencia en la empresa cliente"
+                  action={
+                    <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                      <Pencil aria-hidden className="size-[14px]" strokeWidth={1.9} />
+                      Editar contactos
+                    </Button>
+                  }
+                />
                 {client.contacts.length === 0 ? (
                   <EmptyState icon={Users} title="Sin contactos" />
                 ) : (
@@ -241,55 +279,42 @@ export function ClientDetailPage() {
               </Card>
             )}
 
-            {tab === 'tarifario' &&
-              (client.priceLists.length === 0 ? (
-                <Card>
-                  <EmptyState icon={Tags} className="py-12" title="Sin tarifario acordado" description="Se cotiza caso por caso hasta cerrar un acuerdo marco." />
+            {tab === 'tarifario' && <PriceEntriesPanel workspace={workspace} client={client} />}
+
+            {tab === 'comercial' && (
+              <>
+                <Card aria-labelledby="cl-quotes" className="px-[19px] pb-[19px] pt-[19px]">
+                  <SectionTitle id="cl-quotes" title="Cotizaciones" description="Todas las versiones emitidas para los proyectos del cliente" />
+                  <DataTable
+                    className="mt-[18px]"
+                    caption={`Cotizaciones de ${client.name}`}
+                    rows={workspace.quotations.filter((q) => q.clientId === client.id).sort((a, b) => b.issueDate.localeCompare(a.issueDate))}
+                    getRowId={(q) => q.id}
+                    rowHref={(q) => quotationPath(q.id)}
+                    minWidth={900}
+                    columns={quotationColumns(workspace, { withClient: false })}
+                    empty={<EmptyState icon={FileText} title="Sin cotizaciones" />}
+                  />
                 </Card>
-              ) : (
-                client.priceLists.map((pl) => {
-                  const expired = daysUntil(pl.validUntil) < 0
-                  return (
-                    <Card key={pl.id} aria-labelledby={`pl-${pl.id}`} className="px-[19px] pb-[19px] pt-[19px]">
-                      <SectionTitle
-                        id={`pl-${pl.id}`}
-                        title={pl.name}
-                        description={`Vigente hasta ${formatDate(pl.validUntil)}`}
-                        action={
-                          <span className="flex items-center gap-[8px]">
-                            <MetaBadge className="gap-[5px]">
-                              <CurrencyFlag currency={pl.currency} className="size-[12px]" />
-                              {pl.currency}
-                            </MetaBadge>
-                            <StatusBadge variant="soft" meta={expired ? { label: 'Vencido', tone: 'danger' } : { label: 'Vigente', tone: 'success' }} />
-                          </span>
-                        }
-                      />
-                      <DataTable<PriceListItem>
-                        className="mt-[18px]"
-                        caption={`Tarifas de ${pl.name}`}
-                        rows={pl.items}
-                        getRowId={(i) => i.serviceType}
-                        minWidth={420}
-                        dense
-                        columns={[
-                          {
-                            id: 'service',
-                            header: 'Servicio',
-                            cell: (i) => (
-                              <span className="flex items-center gap-[10px]">
-                                <ServiceChip type={i.serviceType} />
-                                <span className="font-medium">{getServiceType(i.serviceType).label}</span>
-                              </span>
-                            ),
-                          },
-                          { id: 'price', header: 'Precio acordado', width: '200px', className: 'tabular font-medium', cell: (i) => formatCurrency(i.price, pl.currency) },
-                        ]}
-                      />
-                    </Card>
-                  )
-                })
-              ))}
+                <Card aria-labelledby="cl-pos" className="px-[19px] pb-[19px] pt-[19px]">
+                  <SectionTitle
+                    id="cl-pos"
+                    title="Órdenes de compra"
+                    description={client.policy.requiresPurchaseOrder ? 'Este cliente exige OC antes de facturar.' : 'Este cliente no exige OC para facturar.'}
+                  />
+                  <DataTable
+                    className="mt-[18px]"
+                    caption={`Órdenes de compra de ${client.name}`}
+                    rows={workspace.purchaseOrders.filter((p) => p.clientId === client.id).sort((a, b) => b.receivedDate.localeCompare(a.receivedDate))}
+                    getRowId={(p) => p.id}
+                    rowHref={(p) => purchaseOrderPath(p.id)}
+                    minWidth={1000}
+                    columns={purchaseOrderColumns(workspace, { withClient: false })}
+                    empty={<EmptyState icon={FileText} title="Sin órdenes de compra" />}
+                  />
+                </Card>
+              </>
+            )}
 
             {tab === 'facturas' && (
               <Card aria-labelledby="cl-invoices" className="px-[19px] pb-[19px] pt-[19px]">
@@ -346,6 +371,7 @@ export function ClientDetailPage() {
           </motion.div>
         </TabPanel>
       </div>
+      <ClientFormModal open={editing} onClose={() => setEditing(false)} workspace={workspace} client={client} />
     </div>
   )
 }

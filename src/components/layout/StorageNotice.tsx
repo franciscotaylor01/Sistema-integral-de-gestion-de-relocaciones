@@ -6,6 +6,7 @@ const issueText = {
   corrupted: 'Los datos guardados estaban dañados.',
   outdated: 'Los datos guardados eran de una versión anterior de SIGR.',
   invalid: 'Los datos guardados tenían inconsistencias.',
+  migrated: '',
 } as const
 
 /** Surfaces persistence problems once: discarded stored data or unavailable storage. */
@@ -18,7 +19,11 @@ export function StorageNotice() {
 
   useEffect(() => {
     if (!state.issue) return
-    notify({ title: 'Se restauraron los datos de demo', description: `${issueText[state.issue]} Se cargaron los datos ficticios iniciales.` })
+    if (state.issue === 'migrated') {
+      notify({ title: 'Datos de demo actualizados', description: 'Se incorporó la gestión comercial conservando tus proyectos, servicios y tareas.' })
+    } else {
+      notify({ title: 'Se restauraron los datos de demo', description: `${issueText[state.issue]} Se cargaron los datos ficticios iniciales.` })
+    }
     workspaceStore.clearIssue()
   }, [state.issue, notify])
 

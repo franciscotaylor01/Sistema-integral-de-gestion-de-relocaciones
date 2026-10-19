@@ -1,11 +1,12 @@
-import type { Client, PriceListItem, ServiceType } from '@/types/domain'
+import type { PriceListItem, ServiceType } from '@/types/domain'
+import type { ClientSeed } from './seedTypes'
 
 /* Fictional corporate clients — demo data only. */
 
 const prices = (entries: [ServiceType, number][]): PriceListItem[] =>
   entries.map(([serviceType, price]) => ({ serviceType, price }))
 
-export const mockClients: Client[] = [
+export const mockClients: ClientSeed[] = [
   {
     id: 'cli_nordvik',
     name: 'Nordvik Energy',

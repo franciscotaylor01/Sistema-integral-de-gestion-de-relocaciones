@@ -2,7 +2,7 @@
 
 Plataforma de gestión de relocaciones internacionales para **Relocare**, desarrollada por **Argen Labs**.
 
-> **Fase 2 — gestión de proyectos y servicios.** Demo funcional con persistencia local en el navegador. Todos los datos son ficticios. No hay backend, autenticación, integraciones (ARCA) ni cálculos impositivos, de tipo de cambio o facturación real.
+> **Fase 3 — gestión comercial.** Demo funcional con persistencia local en el navegador: proyectos y servicios (Fase 2) más clientes, tarifarios, cotizaciones, órdenes de compra y trazabilidad comercial. Todos los datos son ficticios. No hay backend, autenticación, integraciones (ARCA) ni facturación real, impuestos o conversión de monedas.
 
 ## Diseño
 
@@ -44,6 +44,16 @@ npm run dev        # http://localhost:5173
 
 Búsqueda global con <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd>. "Mis tareas" y "Restablecer datos de demo" están en el menú de usuario.
 
+## Fase 3 — gestión comercial
+
+- **Clientes:** alta y edición con identificación fiscal (única), dirección de facturación, contactos (uno principal), plazo de pago, moneda, estado, notas y **política comercial configurable**: exige OC o no, exige cotización aprobada o no, hito de facturación (al aprobar, al iniciar o al completar el servicio) y validez de cotizaciones.
+- **Tarifarios:** reglas por cliente, servicio, mercado (país de destino o todos), moneda, unidad, tramo por cantidad, vigencia y estado, con búsqueda, filtros y un simulador "Probar tarifa". Precedencia explícita: mercado específico > general; mayor tramo aplicable. Las reglas que empatan se marcan como **superpuestas**: guardarlas requiere confirmación y las cotizaciones piden elegir el precio a mano.
+- **Cotizaciones** (`/cotizaciones/:id`): se generan desde el proyecto con una línea por servicio contratado y el precio sugerido por el tarifario. Los ajustes sobre la tarifa requieren motivo y un usuario autorizado (`COMMERCIAL_AUTHORIZERS`). Estados: borrador, enviada, aprobada, rechazada y vencida (derivado de la validez). Tienen versiones: las aprobadas son un snapshot inmutable que los cambios de tarifario no alteran, y una nueva versión aprobada reemplaza a la anterior sin borrarla. Los totales van por moneda, nunca sumados entre monedas.
+- **Órdenes de compra** (`/ordenes-compra/:id`): varias por proyecto, cada una con asignaciones por servicio. Se impide superar el monto de la OC y lo aprobado por servicio (sumando otras OC), y repetir el número de OC de un mismo cliente. Un doble envío no crea duplicados. Cada OC tiene una referencia documental estable (`DOCREF-…`) para adjuntar el archivo más adelante. Anular una OC libera sus autorizaciones.
+- **Trazabilidad:** en Proyecto → Finanzas se ven, por servicio, lo cotizado, lo aprobado, lo autorizado por OC y lo pendiente de OC, más un indicador de facturación que evalúa por separado la aprobación, la OC (según la política) y el hito. Recibir una OC no habilita la facturación por sí sola.
+- **Finanzas:** vistas Comercial, Cotizaciones, Órdenes de compra y Pendiente de OC. **Dashboard:** alertas comerciales accionables (cotizaciones vencidas o por vencer, trabajo aprobado sin OC, tarifas superpuestas).
+- **Migración de datos:** el almacenamiento pasa a `schemaVersion 3`. Los datos guardados en Fase 2 se migran automáticamente, conservando proyectos, servicios, tareas y notas (`src/services/local/migrations.ts`).
+
 ## Fase 2 — operación diaria
 
 - **Proyectos:** alta guiada con validación (fechas, origen ≠ destino, campos requeridos) e idempotencia (un doble envío no duplica el proyecto); edición en un modal dentro del proyecto, incluida la familia.
@@ -72,6 +82,7 @@ src/
   features/<módulo>/   Páginas, componentes y selectores por módulo
   data/mock/, seed.ts  Datos ficticios y armado del dataset inicial
   domain/              Lógica de negocio pura (proyectos, servicios, trámites, workflows, tareas, actividad) + tests
+  domain/commercial/   Clientes, tarifas, cotizaciones, OC, trazabilidad y elegibilidad de facturación
   services/            `SigrDataSource` (única frontera UI ↔ datos), adaptador local y store reactivo
   hooks/               useQuery, useWorkspace, useDismiss
   lib/                 Formato (es-AR), fechas, montos por moneda, búsqueda, motion

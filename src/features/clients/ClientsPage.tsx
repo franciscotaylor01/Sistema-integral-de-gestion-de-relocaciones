@@ -1,8 +1,7 @@
 import { Building2, Plus } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
-import { useToast } from '@/components/feedback/useToast'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -20,11 +19,12 @@ import { currencyEntries } from '@/lib/money'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 import { matches } from '@/lib/search'
 import type { ClientStatus } from '@/types/domain'
+import { ClientFormModal } from './components/ClientFormModal'
 import { summarizeClient } from './selectors'
 
 export function ClientsPage() {
   const { workspace, loading } = useWorkspace()
-  const { notify } = useToast()
+  const [creating, setCreating] = useState(false)
   const [params, setParams] = useSearchParams()
   const q = params.get('q') ?? ''
   const status = params.get('estado') ?? ''
@@ -56,7 +56,7 @@ export function ClientsPage() {
         title="Clientes"
         description="Empresas que contratan relocaciones para sus colaboradores."
         actions={
-          <Button onClick={() => notify({ title: 'Alta de clientes en preparación', description: 'Se habilitará junto con la integración de datos.' })}>
+          <Button onClick={() => setCreating(true)} disabled={!workspace}>
             <Plus aria-hidden className="size-[17px]" strokeWidth={2} />
             Nuevo cliente
           </Button>
@@ -154,6 +154,7 @@ export function ClientsPage() {
           })}
         </motion.ul>
       )}
+      {workspace && <ClientFormModal open={creating} onClose={() => setCreating(false)} workspace={workspace} />}
     </div>
   )
 }

@@ -24,15 +24,22 @@ import { currencyEntries, CURRENCY_ORDER } from '@/lib/money'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 import { matches } from '@/lib/search'
 import type { CurrencyCode, InvoiceStatus, PayableStatus, Project } from '@/types/domain'
+import { DEMO_TODAY } from '@/config/brand'
+import { purchaseOrderStatusMeta, quotationStatusMeta } from '@/config/commercial'
+import { hasAmount } from '@/domain/commercial/money'
+import { projectCommercial } from '@/domain/commercial/traceability'
+import type { PurchaseOrderStatus, QuotationStatus } from '@/types/domain'
 import { CashflowChartCard } from './components/CashflowChartCard'
+import { CommercialOverview, PendingAuthorizationView, PurchaseOrdersView, QuotationsView } from './components/CommercialViews'
 import { CurrencyIndicators } from './components/CurrencyIndicators'
 import { CurrencyLedgerCard } from './components/CurrencyLedgerCard'
 import { invoiceColumns, payableColumns, paymentColumns } from './components/ledgerColumns'
 import { invoiceOutstanding, payableOutstanding, receivablesAging, summarizeLedger } from './selectors'
 
-const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos'] as const
+const VIEWS = ['resumen', 'comercial', 'cotizaciones', 'ordenes', 'pendientes', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
+const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
   const { workspace, loading } = useWorkspace()
@@ -43,6 +50,11 @@ export function FinancePage() {
   const status = params.get('estado') ?? ''
   const direction = params.get('direccion') ?? ''
   const q = params.get('q') ?? ''
+  const client = params.get('cliente') ?? ''
+  const pendingCount = useMemo(() => {
+    if (!workspace) return 0
+    return workspace.projects.reduce((n, p) => n + [...projectCommercial(workspace.dataset, p, DEMO_TODAY).values()].filter((c) => hasAmount(c.pendingAuthorization)).length, 0)
+  }, [workspace])
 
   const setParam = (key: string, value: string) =>
     setParams(
@@ -72,7 +84,7 @@ export function FinancePage() {
     () => CURRENCY_ORDER.filter((c) => workspace?.invoices.some((i) => i.currency === c) || workspace?.payables.some((p) => p.currency === c)),
     [workspace],
   )
-  const hasFilters = Boolean(currency || status || direction || q)
+  const hasFilters = Boolean(currency || status || direction || q || client)
 
   return (
     <div className="pt-[5px]">
@@ -101,6 +113,10 @@ export function FinancePage() {
               onChange={setView}
               items={[
                 { value: 'resumen', label: 'Resumen' },
+                { value: 'comercial', label: 'Comercial' },
+                { value: 'cotizaciones', label: 'Cotizaciones', count: workspace.quotations.length },
+                { value: 'ordenes', label: 'Órdenes de compra', count: workspace.purchaseOrders.filter((p) => p.status === 'active').length },
+                { value: 'pendientes', label: 'Pendiente de OC', count: pendingCount },
                 { value: 'facturas', label: 'Facturas', count: workspace.invoices.length },
                 { value: 'cobranzas', label: 'Cuentas por cobrar', count: workspace.invoices.filter((i) => invoiceOutstanding(i) > 0).length },
                 { value: 'proveedores', label: 'Proveedores', count: workspace.payables.filter((p) => payableOutstanding(p) > 0).length },
@@ -122,6 +138,33 @@ export function FinancePage() {
               onChange={(v) => setParam('moneda', v)}
               options={usedCurrencies.map((c) => ({ value: c, label: c, icon: <CurrencyFlag currency={c} className="size-[16px]" /> }))}
             />
+            {COMMERCIAL_VIEWS.includes(view) && (
+              <FilterSelect
+                size="sm"
+                label="Cliente"
+                value={client}
+                onChange={(v) => setParam('cliente', v)}
+                options={workspace.clients.map((c) => ({ value: c.id, label: c.name }))}
+              />
+            )}
+            {view === 'cotizaciones' && (
+              <FilterSelect
+                size="sm"
+                label="Estado"
+                value={status}
+                onChange={(v) => setParam('estado', v)}
+                options={(Object.keys(quotationStatusMeta) as QuotationStatus[]).map((s) => ({ value: s, label: quotationStatusMeta[s].label }))}
+              />
+            )}
+            {view === 'ordenes' && (
+              <FilterSelect
+                size="sm"
+                label="Estado"
+                value={status}
+                onChange={(v) => setParam('estado', v)}
+                options={(Object.keys(purchaseOrderStatusMeta) as PurchaseOrderStatus[]).map((s) => ({ value: s, label: purchaseOrderStatusMeta[s].label }))}
+              />
+            )}
             {view === 'facturas' && (
               <FilterSelect
                 size="sm"
@@ -163,6 +206,10 @@ export function FinancePage() {
           <div className="mt-[20px]">
             <TabPanel idPrefix="finance-tabs" activeValue={view}>
               <motion.div variants={staggerVariants} initial="hidden" animate="show" className="flex flex-col gap-[24px]">
+                {view === 'comercial' && <CommercialOverview workspace={workspace} currency={currency} client={client} />}
+                {view === 'cotizaciones' && <QuotationsView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
+                {view === 'ordenes' && <PurchaseOrdersView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
+                {view === 'pendientes' && <PendingAuthorizationView workspace={workspace} currency={currency} client={client} q={q} />}
                 {view === 'resumen' && <SummaryView workspace={workspace} currency={currency} currencies={usedCurrencies} />}
                 {view === 'facturas' && <InvoicesView workspace={workspace} currency={currency} status={status} q={q} />}
                 {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} />}

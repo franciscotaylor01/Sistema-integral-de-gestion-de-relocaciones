@@ -1,4 +1,8 @@
 import type { Dataset } from '@/domain/dataset'
+import type { ClientInput } from '@/domain/commercial/clients'
+import type { PriceEntryInput } from '@/domain/commercial/pricing'
+import type { PurchaseOrderInput } from '@/domain/commercial/purchaseOrders'
+import type { ApprovalInput, QuotationDraftInput } from '@/domain/commercial/quotations'
 import type { NewProcedureInput, ProcedurePatch } from '@/domain/procedures'
 import type { NewProjectInput, ProjectPatch } from '@/domain/projects'
 import type { NewServiceInput, ServicePatch } from '@/domain/services'
@@ -38,6 +42,23 @@ export interface SigrDataSource {
 
   createTask(input: NewTaskInput): Promise<CommandResult<{ taskId: string }>>
   updateTask(taskId: string, patch: TaskPatch): Promise<CommandResult>
+
+  // Phase 3 — commercial management
+  createClient(input: ClientInput, requestId: string): Promise<CommandResult<{ clientId: string; duplicate: boolean }>>
+  updateClient(clientId: string, input: ClientInput): Promise<CommandResult>
+  createPriceEntry(input: PriceEntryInput, options?: { acceptOverlap?: boolean }): Promise<CommandResult<{ entryId: string }>>
+  updatePriceEntry(entryId: string, input: PriceEntryInput, options?: { acceptOverlap?: boolean }): Promise<CommandResult>
+  createQuotation(projectId: string): Promise<CommandResult<{ quotationId: string }>>
+  updateQuotationDraft(quotationId: string, input: QuotationDraftInput): Promise<CommandResult>
+  sendQuotation(quotationId: string): Promise<CommandResult>
+  approveQuotation(quotationId: string, input: ApprovalInput): Promise<CommandResult>
+  rejectQuotation(quotationId: string, reason: string): Promise<CommandResult>
+  createQuotationVersion(quotationId: string): Promise<CommandResult<{ quotationId: string }>>
+  discardQuotationDraft(quotationId: string): Promise<CommandResult>
+  createPurchaseOrder(input: PurchaseOrderInput, requestId: string): Promise<CommandResult<{ poId: string; duplicate: boolean }>>
+  updatePurchaseOrder(poId: string, input: PurchaseOrderInput): Promise<CommandResult>
+  cancelPurchaseOrder(poId: string, reason: string): Promise<CommandResult>
+  linkPurchaseOrderDocument(poId: string, label: string): Promise<CommandResult>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

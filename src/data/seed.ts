@@ -3,10 +3,15 @@ import { getServiceType } from '@/config/serviceCatalog'
 import { getWorkflowTemplate } from '@/config/workflowTemplates'
 import { SCHEMA_VERSION, type Dataset } from '@/domain/dataset'
 import { scheduleStages } from '@/domain/workflow'
-import type { Person, Procedure, ProjectParticipant, ProjectRecord, ServiceRecord, ServiceStatus, Task, WorkflowStage } from '@/types/domain'
+import { priceListsToEntries } from '@/domain/commercial/legacy'
+import type { Client, Person, PriceEntry, Procedure, ProjectParticipant, ProjectRecord, PurchaseOrder, Quotation, ServiceRecord, ServiceStatus, Task, WorkflowStage } from '@/types/domain'
 import {
   mockActivity,
   mockAlerts,
+  mockClientCommercial,
+  mockExtraPriceEntries,
+  mockPurchaseOrderSeeds,
+  mockQuotationSeeds,
   mockAssignees,
   mockClients,
   mockCurrencyIndicators,
@@ -181,10 +186,17 @@ export function buildSeedDataset(): Dataset {
     }
   }
 
+  const base = {
+    clients: mockClients.map(({ priceLists: _legacy, ...c }) => withCommercial(c)),
+    projects,
+    services,
+  }
+  const commercial = buildCommercialSeed(base, mockClients.flatMap((c) => priceListsToEntries(c.id, c.priceLists, SEED_TIME)))
+
   return {
     schemaVersion: SCHEMA_VERSION,
     staff: mockStaff,
-    clients: mockClients,
+    clients: base.clients,
     suppliers: mockSuppliers,
     people,
     participants,
@@ -199,6 +211,107 @@ export function buildSeedDataset(): Dataset {
     payments: mockPayments,
     currencyIndicators: mockCurrencyIndicators,
     alerts: mockAlerts,
+    ...commercial,
     requests: {},
   }
+}
+
+const SEED_TIME = '2026-01-05T09:00:00'
+
+const DEFAULT_POLICY: Client['policy'] = { requiresPurchaseOrder: true, requiresApprovedQuote: true, billingMilestone: 'service-completed', quoteValidityDays: 30 }
+
+/** Adds Phase 3 commercial fields (billing address, policy, notes) to a client record. */
+export function withCommercial<T extends Omit<Client, 'policy' | 'billingAddress' | 'notes'>>(client: T): Client {
+  const extra = mockClientCommercial[client.id]
+  return {
+    ...client,
+    billingAddress: extra?.billingAddress ?? `${client.headquarters.city}`,
+    policy: extra?.policy ?? DEFAULT_POLICY,
+    notes: extra?.notes,
+  }
+}
+
+/**
+ * Commercial demo records (tariffs, quotations, POs). Records whose project or
+ * services no longer exist are skipped, so this is also safe when upgrading
+ * data a user already modified (schema v2 → v3).
+ */
+export function buildCommercialSeed(
+  ds: { clients: Client[]; projects: ProjectRecord[]; services: ServiceRecord[] },
+  legacyEntries: PriceEntry[],
+): { priceEntries: PriceEntry[]; quotations: Quotation[]; purchaseOrders: PurchaseOrder[] } {
+  const clientIds = new Set(ds.clients.map((c) => c.id))
+  const priceEntries: PriceEntry[] = [
+    ...legacyEntries,
+    ...mockExtraPriceEntries.map((e) => ({ ...e, createdAt: SEED_TIME, updatedAt: SEED_TIME })),
+  ].filter((e) => clientIds.has(e.clientId))
+
+  const quotations: Quotation[] = []
+  for (const q of mockQuotationSeeds) {
+    const project = ds.projects.find((p) => p.id === q.projectId)
+    const services = ds.services.filter((s) => s.projectId === q.projectId)
+    if (!project || services.length === 0) continue
+    quotations.push({
+      id: q.id,
+      number: q.number,
+      version: q.version,
+      previousVersionId: q.previousVersionId,
+      projectId: project.id,
+      clientId: project.clientId,
+      status: q.status,
+      issueDate: q.issueDate,
+      validUntil: q.validUntil,
+      notes: q.notes,
+      createdAt: `${q.issueDate}T10:00:00`,
+      createdBy: 'stf_05',
+      sentAt: q.sentAt,
+      approvedAt: q.approvedAt,
+      approvedBy: q.approvedBy,
+      rejectedAt: q.status === 'rejected' ? q.sentAt : undefined,
+      rejectionReason: q.rejectionReason,
+      supersededById: q.supersededById,
+      lines: services.map((s, i) => {
+        const price = q.prices?.[s.id] ?? s.price ?? 0
+        return {
+          id: `${q.id}_l${i + 1}`,
+          serviceId: s.id,
+          serviceTypeId: s.typeId,
+          description: `${getServiceType(s.typeId).label} — ${project.destination.city}`,
+          quantity: 1,
+          unit: 'service' as const,
+          unitPrice: price,
+          currency: project.currency,
+          priceSource: 'price-list' as const,
+          suggestedUnitPrice: price,
+        }
+      }),
+    })
+  }
+
+  const quotationIds = new Set(quotations.map((q) => q.id))
+  const serviceIds = new Set(ds.services.map((s) => s.id))
+  const purchaseOrders: PurchaseOrder[] = []
+  for (const po of mockPurchaseOrderSeeds) {
+    const project = ds.projects.find((p) => p.id === po.projectId)
+    if (!project || !quotationIds.has(po.quotationId) || !Object.keys(po.allocations).every((id) => serviceIds.has(id))) continue
+    purchaseOrders.push({
+      id: po.id,
+      internalNumber: po.internalNumber,
+      clientPoNumber: po.clientPoNumber,
+      clientId: project.clientId,
+      projectId: project.id,
+      quotationId: po.quotationId,
+      issueDate: po.issueDate,
+      receivedDate: po.receivedDate,
+      currency: project.currency,
+      authorizedAmount: po.authorizedAmount,
+      allocations: Object.entries(po.allocations).map(([serviceId, amount], i) => ({ id: `${po.id}_a${i + 1}`, serviceId, amount })),
+      status: 'active',
+      documentRef: `DOCREF-${po.internalNumber}`,
+      documentLabel: po.documentLabel,
+      createdAt: `${po.receivedDate}T12:00:00`,
+      createdBy: 'stf_05',
+    })
+  }
+  return { priceEntries, quotations, purchaseOrders }
 }

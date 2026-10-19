@@ -76,17 +76,33 @@ export interface ClientContact {
   primary?: boolean
 }
 
+/** Legacy Phase 1/2 price list shape — kept only for seeds and storage migration. */
 export interface PriceListItem {
   serviceType: ServiceTypeId
   price: number
 }
 
+/** @deprecated Phase 1/2 shape; migrated into `PriceEntry` records (schema v3). */
 export interface PriceList {
   id: string
   name: string
   currency: CurrencyCode
   validUntil: string
   items: PriceListItem[]
+}
+
+/** When a contracted service may be billed, per the client agreement. */
+export type BillingMilestone = 'quote-approved' | 'service-started' | 'service-completed'
+
+/** Configurable commercial rules agreed with each client. */
+export interface CommercialPolicy {
+  /** Some clients require a purchase order before invoicing; others do not. */
+  requiresPurchaseOrder: boolean
+  /** Work must be covered by an approved quotation before invoicing. */
+  requiresApprovedQuote: boolean
+  billingMilestone: BillingMilestone
+  /** Days a sent quotation stays valid by default. */
+  quoteValidityDays: number
 }
 
 export interface Client {
@@ -96,6 +112,7 @@ export interface Client {
   taxId: string
   industry: string
   headquarters: Location
+  billingAddress: string
   status: ClientStatus
   accountManagerId: string
   billingCurrency: CurrencyCode
@@ -103,7 +120,40 @@ export interface Client {
   paymentTermsDays: number
   clientSince: string
   contacts: ClientContact[]
-  priceLists: PriceList[]
+  policy: CommercialPolicy
+  notes?: string
+}
+
+/* ───────────────────────── Pricing ───────────────────────── */
+
+export type PriceUnit = 'service' | 'person' | 'family' | 'hour' | 'month' | 'session' | 'document'
+
+/** Market a price applies to: a destination country or any market. */
+export type PriceMarket = CountryCode | 'ANY'
+
+/**
+ * One negotiated price rule. Rules are matched by client, service, market,
+ * currency, validity and minimum quantity; overlaps are surfaced, never
+ * resolved silently.
+ */
+export interface PriceEntry {
+  id: string
+  clientId: string
+  serviceTypeId: ServiceTypeId
+  market: PriceMarket
+  currency: CurrencyCode
+  unitPrice: number
+  unit: PriceUnit
+  /** Quantity tier: applies from this quantity upwards. */
+  minQuantity: number
+  validFrom: string
+  validTo?: string
+  active: boolean
+  /** Contract / agreement the price comes from. */
+  agreement?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
 }
 
 /* ───────────────────────── Workflows ───────────────────────── */
@@ -284,7 +334,7 @@ export interface ProjectDocument {
   expiresAt?: string
 }
 
-export type ActivityKind = 'project' | 'status' | 'document' | 'finance' | 'note' | 'service' | 'procedure' | 'task'
+export type ActivityKind = 'project' | 'status' | 'document' | 'finance' | 'note' | 'service' | 'procedure' | 'task' | 'commercial'
 
 export interface ActivityEvent {
   id: string
@@ -360,23 +410,95 @@ export interface CurrencyIndicator {
   changePct: number
 }
 
-/* Future commercial documents — shapes only, not implemented in Phase 2. */
+/* ───────────────────────── Commercial: quotations & purchase orders ───────────────────────── */
+
+export type QuotationStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'expired'
+
+export type PriceSource = 'price-list' | 'adjusted' | 'manual'
+
+/** Quotation line. Amounts are a frozen snapshot: tariff changes never alter them. */
+export interface QuotationLine {
+  id: string
+  /** Contracted service this line prices (optional for extra items). */
+  serviceId?: string
+  serviceTypeId: ServiceTypeId
+  description: string
+  quantity: number
+  unit: PriceUnit
+  unitPrice: number
+  currency: CurrencyCode
+  priceSource: PriceSource
+  /** Price rule used for the suggestion, if any. */
+  priceEntryId?: string
+  /** Tariff price suggested when the line was built (for adjustment audit). */
+  suggestedUnitPrice?: number
+  adjustmentReason?: string
+  notes?: string
+}
 
 export interface Quotation {
   id: string
+  /** Shared by all versions: "COT-2026-0007". */
+  number: string
+  version: number
+  /** Id of the version this one was derived from. */
+  previousVersionId?: string
   projectId: string
-  serviceIds: string[]
-  currency: CurrencyCode
-  status: 'draft' | 'sent' | 'accepted' | 'rejected'
+  clientId: string
+  status: QuotationStatus
+  issueDate: string
+  validUntil: string
+  lines: QuotationLine[]
+  notes?: string
+  createdAt: string
+  createdBy: string
+  sentAt?: string
+  approvedAt?: string
+  /** Client-side approver (name / reference of the acceptance). */
+  approvedBy?: string
+  rejectedAt?: string
+  rejectionReason?: string
+  /** Set when a later approved version replaces this one. */
+  supersededById?: string
+}
+
+export type PurchaseOrderStatus = 'active' | 'cancelled'
+
+/** Portion of a PO authorised for one contracted service. */
+export interface PoAllocation {
+  id: string
+  serviceId: string
+  amount: number
+  notes?: string
 }
 
 export interface PurchaseOrder {
   id: string
-  projectId: string
+  /** Relocare internal reference: "OCI-2026-0004". */
+  internalNumber: string
+  /** Number on the client's document; unique per client among active POs. */
+  clientPoNumber: string
   clientId: string
-  number: string
+  projectId: string
+  /** Approved quotation the PO responds to, when applicable. */
   quotationId?: string
+  issueDate: string
+  receivedDate: string
+  currency: CurrencyCode
+  authorizedAmount: number
+  allocations: PoAllocation[]
+  status: PurchaseOrderStatus
+  /** Stable reference reserved for the PO document (storage arrives later). */
+  documentRef: string
+  /** Label of the linked document once registered (file name, DMS id…). */
+  documentLabel?: string
+  notes?: string
+  cancelReason?: string
+  createdAt: string
+  createdBy: string
 }
+
+/* Future financial documents — shapes only, not implemented yet. */
 
 export interface FinancialSettlement {
   id: string

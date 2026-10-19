@@ -5,6 +5,9 @@ import type {
   CurrencyIndicator,
   Invoice,
   Payment,
+  PriceEntry,
+  PurchaseOrder,
+  Quotation,
   Person,
   Procedure,
   ProjectDocument,
@@ -18,7 +21,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -39,6 +42,10 @@ export interface Dataset {
   payments: Payment[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
+  /** Phase 3 — commercial management. */
+  priceEntries: PriceEntry[]
+  quotations: Quotation[]
+  purchaseOrders: PurchaseOrder[]
   /** Idempotency keys of processed create requests → created record id. */
   requests: Record<string, string>
 }

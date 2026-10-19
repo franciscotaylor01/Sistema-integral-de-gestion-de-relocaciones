@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { BriefcaseBusiness, CircleDollarSign, FileText, Flag, ListChecks, MessageSquareText, Stamp, Workflow } from 'lucide-react'
+import { BriefcaseBusiness, Handshake, CircleDollarSign, FileText, Flag, ListChecks, MessageSquareText, Stamp, Workflow } from 'lucide-react'
 import type { ActivityKind } from '@/types/domain'
 
 export const activityKindMeta: Record<ActivityKind, { label: string; icon: LucideIcon }> = {
@@ -11,4 +11,5 @@ export const activityKindMeta: Record<ActivityKind, { label: string; icon: Lucid
   note: { label: 'Nota', icon: MessageSquareText },
   document: { label: 'Documentación', icon: FileText },
   finance: { label: 'Finanzas', icon: CircleDollarSign },
+  commercial: { label: 'Comercial', icon: Handshake },
 }

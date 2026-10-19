@@ -52,6 +52,7 @@ export function ProjectDetailPage() {
   if (!ctx) return <NotFoundPage title="Proyecto no encontrado" description={`No existe un proyecto con el identificador “${projectId}”.`} />
 
   const { project, client, beneficiary, owner } = ctx
+  const activePos = ctx.workspace.purchaseOrders.filter((p) => p.projectId === project.id && p.status === 'active')
   const progress = projectProgress(project.services, project.services.flatMap((s) => s.procedures)).pct
 
   const setTab = (value: ProjectTab) =>
@@ -116,7 +117,15 @@ export function ProjectDetailPage() {
           <Fact label="Presupuesto">
             <span className="tabular">{formatCurrency(projectBudget(project), project.currency)}</span>
           </Fact>
-          <Fact label="Orden de compra">{project.purchaseOrder ?? <span className="text-muted">Pendiente</span>}</Fact>
+          <Fact label="Órdenes de compra">
+            {client?.policy.requiresPurchaseOrder === false ? (
+              <span className="text-muted">No requeridas</span>
+            ) : activePos.length ? (
+              <span className="tabular">{activePos.map((p) => p.clientPoNumber).join(', ')}</span>
+            ) : (
+              <span className="text-muted">Pendiente</span>
+            )}
+          </Fact>
           <div className="col-span-2 min-w-0 md:col-span-1">
             <dt className="flex items-center justify-between text-[13px] text-muted">
               Avance general <span className="tabular font-medium text-ink">{formatPercent(progress)}</span>
