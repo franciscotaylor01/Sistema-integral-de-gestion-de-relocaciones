@@ -1,0 +1,101 @@
+/*
+ * SIGR design tokens — adopted verbatim from Vertix.
+ * Raw values live in --sg-* custom properties so a client theme (or dark mode)
+ * can override them without touching components. Tailwind utilities are mapped
+ * onto these in src/index.css via @theme.
+ */
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+
+  /* Surfaces */
+  --sg-backdrop: #e8e6e7;
+  --sg-canvas: #f3f1f4;
+  --sg-surface: #ffffff;
+  --sg-surface-muted: #f4f2f5;
+  --sg-surface-sunken: #ebe9ec;
+  --sg-line: #ece9ed;
+  --sg-line-strong: #dedbe0;
+
+  /* Text */
+  --sg-ink: #171518;
+  --sg-ink-secondary: #3b393d;
+  --sg-muted: #868487;
+  --sg-subtle: #a8a6aa;
+
+  /* Inverted surface (active nav pill, primary button) */
+  --sg-contrast: #171518;
+  --sg-on-contrast: #ffffff;
+
+  /* Brand accent */
+  --sg-accent: #d9623e;
+  --sg-accent-strong: #c94f2d;
+  --sg-accent-soft: #fbe9e2;
+  --sg-accent-from: #ec9a76;
+  --sg-accent-via: #df6e48;
+  --sg-accent-to: #cb4f2e;
+  --sg-accent-stripe: #b9472a;
+
+  /* Status */
+  --sg-success: #2f9a5d;
+  --sg-success-soft: #e3f4e9;
+  --sg-danger: #d2453b;
+  --sg-danger-soft: #fce8e5;
+  --sg-info: #3d7ef0;
+  --sg-info-soft: #e6eefd;
+  --sg-warning: #c98a1f;
+  --sg-warning-soft: #fbf1dc;
+
+  /* Elevation */
+  --sg-shadow-card: 0 1px 2px rgb(23 21 24 / 0.02), 0 10px 30px -18px rgb(23 21 24 / 0.08);
+  --sg-shadow-card-hover: 0 1px 2px rgb(23 21 24 / 0.03), 0 18px 40px -20px rgb(23 21 24 / 0.14);
+  --sg-shadow-pill: 0 1px 2px rgb(23 21 24 / 0.03), 0 6px 18px -12px rgb(23 21 24 / 0.08);
+  --sg-shadow-accent: 0 14px 26px -14px rgb(214 90 54 / 0.6);
+  --sg-shadow-accent-hover: 0 18px 32px -14px rgb(214 90 54 / 0.7);
+  --sg-hatch: rgb(23 21 24 / 0.16);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --sg-backdrop: #0b0a0c;
+  --sg-canvas: #111012;
+  --sg-surface: #1b1a1d;
+  --sg-surface-muted: #232125;
+  --sg-surface-sunken: #2c2a2f;
+  --sg-line: #2a282c;
+  --sg-line-strong: #38353a;
+
+  --sg-ink: #f4f2f5;
+  --sg-ink-secondary: #d4d1d6;
+  --sg-muted: #9a979d;
+  --sg-subtle: #6f6c72;
+
+  --sg-contrast: #f4f2f5;
+  --sg-on-contrast: #171518;
+
+  --sg-accent: #e06b46;
+  --sg-accent-strong: #ea7a55;
+  --sg-accent-soft: #3a2119;
+  --sg-accent-from: #ee9a74;
+  --sg-accent-via: #e0704a;
+  --sg-accent-to: #c24a2a;
+  --sg-accent-stripe: #b84f33;
+
+  --sg-success: #4cc283;
+  --sg-success-soft: #173326;
+  --sg-danger: #f0695d;
+  --sg-danger-soft: #3a1c1a;
+  --sg-info: #5b93f5;
+  --sg-info-soft: #1b2740;
+  --sg-warning: #e0a43a;
+  --sg-warning-soft: #3a2c14;
+
+  --sg-shadow-card: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px -18px rgb(0 0 0 / 0.6);
+  --sg-shadow-card-hover: 0 1px 2px rgb(0 0 0 / 0.35), 0 18px 40px -18px rgb(0 0 0 / 0.75);
+  --sg-shadow-pill: 0 1px 2px rgb(0 0 0 / 0.3), 0 6px 18px -12px rgb(0 0 0 / 0.5);
+  --sg-shadow-accent: 0 14px 26px -14px rgb(214 90 54 / 0.45);
+  --sg-shadow-accent-hover: 0 18px 32px -14px rgb(214 90 54 / 0.55);
+  --sg-hatch: rgb(244 242 245 / 0.16);
+}

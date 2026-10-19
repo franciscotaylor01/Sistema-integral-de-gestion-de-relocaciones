@@ -1,0 +1,132 @@
+@import '@fontsource-variable/inter';
+@import 'tailwindcss';
+@import '../theme/tokens.css';
+
+@custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
+
+@theme inline {
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-backdrop: var(--sg-backdrop);
+  --color-canvas: var(--sg-canvas);
+  --color-surface: var(--sg-surface);
+  --color-surface-muted: var(--sg-surface-muted);
+  --color-surface-sunken: var(--sg-surface-sunken);
+  --color-line: var(--sg-line);
+  --color-line-strong: var(--sg-line-strong);
+
+  --color-ink: var(--sg-ink);
+  --color-ink-secondary: var(--sg-ink-secondary);
+  --color-muted: var(--sg-muted);
+  --color-subtle: var(--sg-subtle);
+
+  --color-contrast: var(--sg-contrast);
+  --color-on-contrast: var(--sg-on-contrast);
+
+  --color-accent: var(--sg-accent);
+  --color-accent-strong: var(--sg-accent-strong);
+  --color-accent-soft: var(--sg-accent-soft);
+
+  --color-success: var(--sg-success);
+  --color-success-soft: var(--sg-success-soft);
+  --color-danger: var(--sg-danger);
+  --color-danger-soft: var(--sg-danger-soft);
+  --color-info: var(--sg-info);
+  --color-info-soft: var(--sg-info-soft);
+  --color-warning: var(--sg-warning);
+  --color-warning-soft: var(--sg-warning-soft);
+
+  --shadow-card: var(--sg-shadow-card);
+  --shadow-pill: var(--sg-shadow-pill);
+  --shadow-card-hover: var(--sg-shadow-card-hover);
+  --shadow-accent: var(--sg-shadow-accent);
+  --shadow-accent-hover: var(--sg-shadow-accent-hover);
+
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --radius-card: 22px;
+  --radius-tile: 18px;
+  --radius-panel: 16px;
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink;
+    min-height: 100dvh;
+    transition:
+      background-color 240ms ease,
+      color 240ms ease;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--sg-accent);
+    outline-offset: 2px;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}
+
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Diagonal hatch used by progress tracks */
+  .bg-hatch {
+    background-image: repeating-linear-gradient(
+      -60deg,
+      var(--sg-hatch) 0 1px,
+      transparent 1px 4px
+    );
+  }
+
+  /* Skeleton shimmer for loading states (disabled under reduced motion) */
+  .skeleton {
+    background: linear-gradient(
+      100deg,
+      var(--sg-surface-sunken) 30%,
+      var(--sg-surface-muted) 50%,
+      var(--sg-surface-sunken) 70%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .skeleton {
+    animation: none;
+  }
+}
