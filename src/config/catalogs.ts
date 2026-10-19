@@ -56,6 +56,7 @@ export const invoiceStatusMeta: Record<InvoiceStatus, StatusMeta> = {
   'partially-paid': { label: 'Cobro parcial', tone: 'warning' },
   paid: { label: 'Cobrada', tone: 'success' },
   overdue: { label: 'Vencida', tone: 'danger' },
+  cancelled: { label: 'Anulada', tone: 'neutral' },
 }
 
 export const payableStatusMeta: Record<PayableStatus, StatusMeta> = {
@@ -64,6 +65,8 @@ export const payableStatusMeta: Record<PayableStatus, StatusMeta> = {
   'partially-paid': { label: 'Pago parcial', tone: 'warning' },
   paid: { label: 'Pagado', tone: 'success' },
   overdue: { label: 'Vencido', tone: 'danger' },
+  cancelled: { label: 'Anulado', tone: 'neutral' },
+  'awaiting-collection': { label: 'Espera cobro cliente', tone: 'accent' },
 }
 
 export const documentStatusMeta: Record<DocumentStatus, StatusMeta> = {

@@ -7,6 +7,7 @@ import type { DomainContext } from '../context'
 import type { Dataset } from '../dataset'
 import { addDays } from '../dates'
 import { DomainError, isIsoDate } from '../errors'
+import { mulMoney } from '../finance/money'
 import { addAmount, round2, type Amounts } from './money'
 import { resolvePrice } from './pricing'
 
@@ -15,7 +16,7 @@ export function effectiveStatus(q: Pick<Quotation, 'status' | 'validUntil'>, tod
   return q.status === 'sent' && q.validUntil < today ? 'expired' : q.status
 }
 
-export const lineTotal = (l: Pick<QuotationLine, 'quantity' | 'unitPrice'>) => round2(l.quantity * l.unitPrice)
+export const lineTotal = (l: Pick<QuotationLine, 'quantity' | 'unitPrice'>) => mulMoney(l.unitPrice, l.quantity)
 
 /** Totals per currency — never summed across currencies. */
 export function quotationTotals(lines: Pick<QuotationLine, 'quantity' | 'unitPrice' | 'currency'>[]): Amounts {

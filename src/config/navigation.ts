@@ -20,6 +20,7 @@ export const ROUTES = {
   clients: '/clientes',
   operations: '/operaciones',
   finance: '/finanzas',
+  suppliers: '/proveedores',
   settings: '/configuracion',
   help: '/ayuda',
   profile: '/perfil',
@@ -27,6 +28,8 @@ export const ROUTES = {
 
 export const projectPath = (id: string) => `${ROUTES.projects}/${id}`
 export const clientPath = (id: string) => `${ROUTES.clients}/${id}`
+export const invoicePath = (id: string) => `/facturas/${id}`
+export const supplierPath = (id: string) => `${ROUTES.suppliers}/${id}`
 export const quotationPath = (id: string) => `/cotizaciones/${id}`
 export const purchaseOrderPath = (id: string) => `/ordenes-compra/${id}`
 
@@ -55,7 +58,7 @@ export const railNav: ModuleItem[] = [
   {
     id: 'suppliers',
     label: 'Proveedores',
-    path: '/proveedores',
+    path: ROUTES.suppliers,
     icon: Truck,
     description: 'Red de proveedores por país y servicio, tarifas, evaluaciones y cuentas a pagar.',
   },

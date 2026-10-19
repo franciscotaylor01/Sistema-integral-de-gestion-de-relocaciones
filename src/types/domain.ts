@@ -348,58 +348,276 @@ export interface ActivityEvent {
   message: string
 }
 
-/* ───────────────────────── Finance (records shown in Phase 1 previews) ───────────────────────── */
+/* ───────────────────────── Finance (Phase 4) ───────────────────────── */
 
-export type InvoiceStatus = 'draft' | 'issued' | 'partially-paid' | 'paid' | 'overdue'
+/** Relocare legal entity that issues invoices. Tax ids are never invented. */
+export interface LegalEntity {
+  id: string
+  name: string
+  country: CountryCode
+  /** Left empty in the demo: real fiscal identifiers must be loaded by the client. */
+  taxId?: string
+  defaultCurrency: CurrencyCode
+}
+
+/** Invoice document type (labels only; no fiscal semantics in SIGR). */
+export type InvoiceKind = 'A' | 'B' | 'E' | 'foreign'
+
+/** Lifecycle state. Paid / partially paid / overdue are derived, never stored. */
+export type InvoiceLifecycle = 'draft' | 'issued' | 'cancelled'
+
+/** Display status derived from lifecycle, receipts and due date. */
+export type InvoiceStatus = 'draft' | 'issued' | 'partially-paid' | 'paid' | 'overdue' | 'cancelled'
+
+export interface InvoiceLine {
+  id: string
+  /** Contracted service billed by this line (required unless `reimbursable`). */
+  serviceId?: string
+  /** Approved commercial record the line bills. */
+  quotationId?: string
+  purchaseOrderId?: string
+  description: string
+  quantity: number
+  unitPrice: number
+  /** Pass-through expense not covered by the commercial approval (explicit). */
+  reimbursable?: boolean
+}
+
+export interface TaxComponent {
+  id: string
+  /** e.g. "IVA 21 %" — entered by the user; SIGR does not determine taxes. */
+  label: string
+  ratePct: number
+}
 
 export interface Invoice {
   id: string
+  /** SIGR internal reference: "FC-2026-0042". */
   number: string
+  /** Number of the externally issued (fiscal) document, if any. */
+  externalRef?: string
+  issuerId: string
+  kind: InvoiceKind
   clientId: string
   projectId: string
   issueDate: string
   dueDate: string
   currency: CurrencyCode
-  amount: number
-  collected: number
-  status: InvoiceStatus
+  lines: InvoiceLine[]
+  taxes: TaxComponent[]
+  lifecycle: InvoiceLifecycle
+  notes?: string
+  createdAt: string
+  createdBy: string
+  issuedAt?: string
+  cancelledAt?: string
+  cancelReason?: string
+  /** Migrated from the Phase 1 flat invoice records. */
+  legacy?: boolean
 }
+
+export type PaymentMethod = 'transfer' | 'wire' | 'check' | 'card' | 'cash'
+
+/** Exchange-rate metadata kept with a transaction (informative, no conversion). */
+export interface FxMeta {
+  exchangeRateId?: string
+  note?: string
+}
+
+export interface ReceiptAllocation {
+  id: string
+  invoiceId: string
+  amount: number
+  date: string
+}
+
+/**
+ * Money received from a client. Allocated to one or more invoices of the same
+ * currency; any unallocated remainder is an explicit client credit.
+ */
+export interface CustomerReceipt {
+  id: string
+  number: string
+  clientId: string
+  date: string
+  currency: CurrencyCode
+  amount: number
+  method: PaymentMethod
+  reference?: string
+  notes?: string
+  allocations: ReceiptAllocation[]
+  fx?: FxMeta
+  status: 'recorded' | 'reversed'
+  reversedAt?: string
+  reversalReason?: string
+  createdAt: string
+  createdBy: string
+}
+
+export type CollectionActionKind = 'call' | 'email' | 'meeting' | 'promise' | 'note'
+
+export interface CollectionAction {
+  id: string
+  invoiceId: string
+  clientId: string
+  date: string
+  actorId: string
+  kind: CollectionActionKind
+  text: string
+  /** Payment date promised by the client, if any. */
+  promisedDate?: string
+}
+
+/* Suppliers & costs */
+
+export type SupplierKind = 'company' | 'professional'
+
+/** When a supplier obligation becomes payable. */
+export type PaymentCondition = 'due-date' | 'after-client-collection'
 
 export interface Supplier {
   id: string
   name: string
-  category: ServiceTypeId
+  kind: SupplierKind
   country: CountryCode
+  contactName?: string
+  email?: string
+  phone?: string
+  preferredCurrency: CurrencyCode
+  /** Service categories the supplier covers. */
+  categories: ServiceTypeId[]
+  /** Placeholder only — no real banking data in the demo. */
+  paymentDetails?: string
+  /** Default rule for new obligations (configurable per obligation). */
+  defaultPaymentCondition: PaymentCondition
+  active: boolean
+  notes?: string
 }
 
-export type PayableStatus = 'scheduled' | 'pending-approval' | 'partially-paid' | 'paid' | 'overdue'
-
-export interface SupplierPayable {
+/** Agreed amount for a supplier's work on a contracted service (e.g. a professional's fee). */
+export interface SupplierAgreement {
   id: string
-  reference: string
   supplierId: string
   projectId: string
   serviceId?: string
+  description: string
+  currency: CurrencyCode
+  agreedAmount: number
+  paymentCondition: PaymentCondition
+  notes?: string
+  createdAt: string
+}
+
+export type CostCategory = 'supplier-fee' | 'professional-services' | 'moving' | 'migration' | 'other-direct' | 'general-expense'
+
+/**
+ * An actually incurred cost. Project-direct costs carry a project (and usually a
+ * service); general company expenses have no project and are kept separate.
+ * Estimates live on services (`estimatedCost`) and agreements, never here.
+ */
+export interface CostRecord {
+  id: string
+  scope: 'project' | 'company'
+  projectId?: string
+  serviceId?: string
+  supplierId?: string
+  category: CostCategory
+  description: string
+  currency: CurrencyCode
+  amount: number
+  date: string
+  status: 'incurred' | 'void'
+  voidReason?: string
+  notes?: string
+  createdAt: string
+  createdBy: string
+}
+
+export type ObligationLifecycle = 'pending-approval' | 'approved' | 'cancelled'
+
+/** Derived display status of a supplier obligation. */
+export type PayableStatus = 'pending-approval' | 'scheduled' | 'partially-paid' | 'paid' | 'overdue' | 'cancelled' | 'awaiting-collection'
+
+/** Amount owed to a supplier (normally its invoice). Payments are separate records. */
+export interface SupplierObligation {
+  id: string
+  /** Supplier's document number (its invoice). */
+  reference: string
+  supplierId: string
+  projectId?: string
+  serviceId?: string
+  /** Incurred cost this obligation represents. */
+  costId: string
+  agreementId?: string
+  description: string
   issueDate: string
   dueDate: string
   currency: CurrencyCode
   amount: number
-  paid: number
-  status: PayableStatus
+  paymentCondition: PaymentCondition
+  /** Client invoice whose collection releases the payment (after-client-collection). */
+  clientInvoiceId?: string
+  lifecycle: ObligationLifecycle
+  notes?: string
+  cancelReason?: string
+  createdAt: string
+  createdBy: string
 }
 
-export type PaymentDirection = 'incoming' | 'outgoing'
-
-export interface Payment {
+export interface SupplierPaymentAllocation {
   id: string
-  direction: PaymentDirection
+  obligationId: string
+  amount: number
+  /** Explicit reason when paying before the agreed condition is met. */
+  conditionOverride?: string
+}
+
+/** Money paid to a supplier; the unallocated remainder is an explicit advance. */
+export interface SupplierPayment {
+  id: string
+  number: string
+  supplierId: string
   date: string
-  /** Invoice id for incoming, payable id for outgoing. */
-  documentId: string
-  counterparty: string
-  method: 'transfer' | 'wire' | 'check' | 'card'
   currency: CurrencyCode
   amount: number
+  method: PaymentMethod
+  reference?: string
+  notes?: string
+  allocations: SupplierPaymentAllocation[]
+  fx?: FxMeta
+  status: 'recorded' | 'reversed'
+  reversedAt?: string
+  reversalReason?: string
+  createdAt: string
+  createdBy: string
+}
+
+/** Recorded exchange rate. Corrections create a new record that supersedes the old. */
+export interface ExchangeRate {
+  id: string
+  base: CurrencyCode
+  quote: CurrencyCode
+  /** Units of quote per 1 base, as entered (decimal string). */
+  rate: string
+  effectiveDate: string
+  source: string
+  notes?: string
+  supersedesId?: string
+  supersededById?: string
+  createdAt: string
+  createdBy: string
+}
+
+/** Append-only audit trail of financial changes. */
+export interface AuditEvent {
+  id: string
+  date: string
+  actorId: string
+  entity: 'invoice' | 'receipt' | 'cost' | 'obligation' | 'supplier-payment' | 'supplier' | 'exchange-rate' | 'agreement'
+  entityId: string
+  action: string
+  detail: string
+  projectId?: string
 }
 
 export interface CurrencyIndicator {

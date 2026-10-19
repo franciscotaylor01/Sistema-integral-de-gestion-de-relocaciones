@@ -461,7 +461,7 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
           client && input.destination.country
             ? referencePrice(ws, { clientId: client.id, currency: client.billingCurrency, destination: { country: input.destination.country } }, s.typeId, s.startDate)
             : undefined
-        const suppliers = ws.suppliers.filter((x) => x.category === s.typeId)
+        const suppliers = ws.suppliers.filter((x) => x.categories.includes(s.typeId))
         const e = (k: string) => errors[`services.${i}.${k}`]
         return (
           <section key={s.typeId} aria-label={getServiceType(s.typeId).label} className="rounded-panel bg-surface-muted p-[14px]">

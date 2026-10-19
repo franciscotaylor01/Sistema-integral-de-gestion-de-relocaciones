@@ -10,3 +10,13 @@ export { mockCurrentUser, mockStaff } from './staff'
 export { mockSuppliers } from './suppliers'
 export { mockTaskSeeds } from './tasks'
 export { mockClientCommercial, mockExtraPriceEntries, mockPurchaseOrderSeeds, mockQuotationSeeds } from './commercial'
+export {
+  mockAgreements,
+  mockCollectionActions,
+  mockExchangeRates,
+  mockExtraCosts,
+  mockExtraObligations,
+  mockExtraSupplierPayments,
+  mockFlorencia,
+  mockLegalEntities,
+} from './financeExtra'

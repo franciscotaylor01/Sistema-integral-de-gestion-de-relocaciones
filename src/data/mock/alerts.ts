@@ -2,6 +2,7 @@ import type { Alert, Notification } from '@/types/domain'
 
 /* Fictional alerts and notifications — demo data only. */
 
+/* Finance alerts (overdue invoices / supplier payments) are derived from records — see features/finance/alerts.ts. */
 export const mockAlerts: Alert[] = [
   {
     id: 'al_01', severity: 'critical', date: '2026-10-13',
@@ -10,22 +11,10 @@ export const mockAlerts: Alert[] = [
     href: '/proyectos/prj_0159?tab=documentos',
   },
   {
-    id: 'al_02', severity: 'critical', date: '2026-10-01',
-    title: 'Factura vencida — Helvion Pharma',
-    description: 'FA-0001-00001836 · EUR 7.400 vencida el 30/09.',
-    href: '/finanzas?vista=facturas&estado=overdue',
-  },
-  {
     id: 'al_03', severity: 'warning', date: '2026-10-16',
     title: 'Trámite migratorio bloqueado',
     description: 'REL-2026-0155 · Certificado de antecedentes vencido de Diego Fuentes.',
     href: '/proyectos/prj_0155?tab=servicios',
-  },
-  {
-    id: 'al_04', severity: 'warning', date: '2026-10-11',
-    title: 'Pago a proveedor vencido',
-    description: 'BR Mobility Serviços · EUR 2.800 vencido el 10/10.',
-    href: '/finanzas?vista=proveedores&estado=overdue',
   },
   {
     id: 'al_05', severity: 'warning', date: '2026-10-14',

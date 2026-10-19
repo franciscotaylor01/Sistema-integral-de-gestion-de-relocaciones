@@ -31,7 +31,7 @@ const linkButton =
 export function OverviewTab({ ctx, onNavigate, onEdit }: { ctx: ProjectContext; onNavigate: (tab: Tab) => void; onEdit: () => void }) {
   const { project, beneficiary, family, workspace } = ctx
   const [taskId, setTaskId] = useState<string>()
-  const ledger = summarizeLedger(ctx.invoices, ctx.payables)
+  const ledger = summarizeLedger(workspace, ctx.invoices, ctx.obligations)
   const cur = project.currency
   const budget = projectBudget(project)
   const margin = budget - projectEstimatedCost(project)

@@ -4,11 +4,20 @@ import { getWorkflowTemplate } from '@/config/workflowTemplates'
 import { SCHEMA_VERSION, type Dataset } from '@/domain/dataset'
 import { scheduleStages } from '@/domain/workflow'
 import { priceListsToEntries } from '@/domain/commercial/legacy'
+import { convertLegacyFinance, type LegacyFinance } from './legacyFinance'
 import type { Client, Person, PriceEntry, Procedure, ProjectParticipant, ProjectRecord, PurchaseOrder, Quotation, ServiceRecord, ServiceStatus, Task, WorkflowStage } from '@/types/domain'
 import {
   mockActivity,
   mockAlerts,
+  mockAgreements,
   mockClientCommercial,
+  mockCollectionActions,
+  mockExchangeRates,
+  mockExtraCosts,
+  mockExtraObligations,
+  mockExtraSupplierPayments,
+  mockFlorencia,
+  mockLegalEntities,
   mockExtraPriceEntries,
   mockPurchaseOrderSeeds,
   mockQuotationSeeds,
@@ -193,11 +202,15 @@ export function buildSeedDataset(): Dataset {
   }
   const commercial = buildCommercialSeed(base, mockClients.flatMap((c) => priceListsToEntries(c.id, c.priceLists, SEED_TIME)))
 
+  const finance = buildFinanceSeed(
+    { ...base, quotations: commercial.quotations, purchaseOrders: commercial.purchaseOrders },
+    { suppliers: mockSuppliers, invoices: mockInvoices, payables: mockPayables, payments: mockPayments },
+  )
+
   return {
     schemaVersion: SCHEMA_VERSION,
     staff: mockStaff,
     clients: base.clients,
-    suppliers: mockSuppliers,
     people,
     participants,
     projects,
@@ -206,9 +219,7 @@ export function buildSeedDataset(): Dataset {
     tasks: [...handWritten, ...generated],
     activity: [...mockActivity].sort((a, b) => b.date.localeCompare(a.date)),
     documents: mockDocuments,
-    invoices: mockInvoices,
-    payables: mockPayables,
-    payments: mockPayments,
+    ...finance,
     currencyIndicators: mockCurrencyIndicators,
     alerts: mockAlerts,
     ...commercial,
@@ -314,4 +325,45 @@ export function buildCommercialSeed(
     })
   }
   return { priceEntries, quotations, purchaseOrders }
+}
+
+type FinanceBase = Parameters<typeof convertLegacyFinance>[0]
+
+/**
+ * Phase 4 finance records: Phase 1 documents converted to the new model plus
+ * fictional extras (Florencia, direct and general costs, follow-ups, rates).
+ * Extras referencing records that no longer exist are skipped (safe for migrations).
+ */
+export function buildFinanceSeed(base: FinanceBase, legacy: LegacyFinance) {
+  const converted = convertLegacyFinance(base, legacy)
+  const suppliers = converted.suppliers.some((s) => s.id === mockFlorencia.id) ? converted.suppliers : [...converted.suppliers, mockFlorencia]
+  const projects = new Set(base.projects.map((p) => p.id))
+  const services = new Set(base.services.map((s) => s.id))
+  const invoices = new Set(converted.invoices.map((i) => i.id))
+  const okProject = (projectId?: string, serviceId?: string) => (!projectId || projects.has(projectId)) && (!serviceId || services.has(serviceId))
+
+  const agreements = mockAgreements.filter((a) => okProject(a.projectId, a.serviceId))
+  const costs = [...converted.costs, ...mockExtraCosts.filter((c) => okProject(c.projectId, c.serviceId))]
+  const costIds = new Set(costs.map((c) => c.id))
+  const extraObligations = mockExtraObligations.filter(
+    (o) => okProject(o.projectId, o.serviceId) && costIds.has(o.costId) && (!o.clientInvoiceId || invoices.has(o.clientInvoiceId)) && (!o.agreementId || agreements.some((a) => a.id === o.agreementId)),
+  )
+  const obligations = [...converted.obligations, ...extraObligations]
+  const obligationIds = new Set(obligations.map((o) => o.id))
+  const supplierPayments = [...converted.supplierPayments, ...mockExtraSupplierPayments.filter((p) => p.allocations.every((a) => obligationIds.has(a.obligationId)))]
+
+  return {
+    legalEntities: mockLegalEntities,
+    suppliers,
+    invoices: converted.invoices,
+    receipts: converted.receipts,
+    collectionActions: mockCollectionActions.filter((c) => invoices.has(c.invoiceId)),
+    agreements,
+    // Costs of skipped extra obligations are dropped too, keeping cost ↔ obligation consistent.
+    costs: costs.filter((c) => !mockExtraObligations.some((o) => o.costId === c.id) || extraObligations.some((o) => o.costId === c.id)),
+    obligations,
+    supplierPayments,
+    exchangeRates: mockExchangeRates,
+    audit: [],
+  }
 }

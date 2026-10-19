@@ -15,6 +15,13 @@ import {
   sendQuotation,
   updateQuotationDraft,
 } from '@/domain/commercial/quotations'
+import { recordCost, voidCost } from '@/domain/finance/costs'
+import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
+import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
+import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
+import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt } from '@/domain/finance/receipts'
+import { applySupplierAdvance, recordSupplierPayment, reverseSupplierPayment } from '@/domain/finance/supplierPayments'
+import { createAgreement, createSupplier, updateSupplier } from '@/domain/finance/suppliers'
 import { addProcedure, updateProcedure } from '@/domain/procedures'
 import { addProjectNote, createProject, updateProject } from '@/domain/projects'
 import { addService, updateService } from '@/domain/services'
@@ -141,6 +148,33 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     updatePurchaseOrder: (id, input) => simple((ds) => updatePurchaseOrder(ds, id, input, ctx)),
     cancelPurchaseOrder: (id, reason) => simple((ds) => cancelPurchaseOrder(ds, id, reason, ctx)),
     linkPurchaseOrderDocument: (id, label) => simple((ds) => linkPurchaseOrderDocument(ds, id, label, ctx)),
+
+    createInvoiceDraft: (input, requestId) => run((ds) => createInvoiceDraft(ds, input, requestId, ctx)),
+    updateInvoiceDraft: (id, input) => simple((ds) => updateInvoiceDraft(ds, id, input, ctx)),
+    issueInvoice: (id, ref) => simple((ds) => issueInvoice(ds, id, ref, ctx)),
+    cancelInvoice: (id, reason) => simple((ds) => cancelInvoice(ds, id, reason, ctx)),
+    recordReceipt: (input, requestId) => run((ds) => recordReceipt(ds, input, requestId, ctx)),
+    applyReceiptCredit: (id, allocations) => simple((ds) => applyReceiptCredit(ds, id, allocations, ctx)),
+    reverseReceipt: (id, reason) => simple((ds) => reverseReceipt(ds, id, reason, ctx)),
+    addCollectionAction: (input) => simple((ds) => addCollectionAction(ds, input, ctx)),
+    createSupplier: (input, requestId) => run((ds) => createSupplier(ds, input, requestId, ctx)),
+    updateSupplier: (id, input) => simple((ds) => updateSupplier(ds, id, input, ctx)),
+    createAgreement: (input) =>
+      run((ds) => {
+        const r = createAgreement(ds, input, ctx)
+        return { ds: r.ds, agreementId: r.agreement.id }
+      }),
+    recordCost: (input) => run((ds) => recordCost(ds, input, ctx)),
+    voidCost: (id, reason) => simple((ds) => voidCost(ds, id, reason, ctx)),
+    createObligation: (input, requestId) => run((ds) => createObligation(ds, input, requestId, ctx)),
+    approveObligation: (id) => simple((ds) => approveObligation(ds, id, ctx)),
+    updateObligationTerms: (id, patch) => simple((ds) => updateObligationTerms(ds, id, patch, ctx)),
+    cancelObligation: (id, reason) => simple((ds) => cancelObligation(ds, id, reason, ctx)),
+    recordSupplierPayment: (input, requestId) => run((ds) => recordSupplierPayment(ds, input, requestId, ctx)),
+    applySupplierAdvance: (id, allocations) => simple((ds) => applySupplierAdvance(ds, id, allocations, ctx)),
+    reverseSupplierPayment: (id, reason) => simple((ds) => reverseSupplierPayment(ds, id, reason, ctx)),
+    recordExchangeRate: (input) => run((ds) => recordExchangeRate(ds, input, ctx)),
+    correctExchangeRate: (id, rate, reason) => run((ds) => correctExchangeRate(ds, id, rate, reason, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/EmptyState'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { brand, DEMO_TODAY } from '@/config/brand'
 import { commercialAlerts, sortAlerts } from '@/features/commercial/alerts'
+import { financeAlerts } from '@/features/finance/alerts'
 import { summarizeLedger } from '@/features/finance/selectors'
 import { useQuery } from '@/hooks/useQuery'
 import { useWorkspace } from '@/hooks/useWorkspace'
@@ -28,7 +29,7 @@ export function DashboardPage() {
   const { workspace, loading, error } = useWorkspace()
   const { data: user } = useQuery('current-user', dataSource.getCurrentUser)
   const [greeting] = useState(() => greetingForHour(new Date().getHours()))
-  const ledger = useMemo(() => workspace && summarizeLedger(workspace.invoices, workspace.payables), [workspace])
+  const ledger = useMemo(() => workspace && summarizeLedger(workspace), [workspace])
 
   return (
     <div className="pt-[5px]">
@@ -59,7 +60,7 @@ export function DashboardPage() {
             <ProfitabilityCard projects={workspace.projects} />
             <KpiGrid ledger={ledger} />
             <div className="md:col-span-2 xl:col-span-1">
-              <CashflowChartCard invoices={workspace.invoices} payments={workspace.payments} />
+              <CashflowChartCard workspace={workspace} />
             </div>
 
             <div className="grid grid-cols-1 gap-[24px] md:col-span-2 md:grid-cols-2 xl:col-span-1 xl:flex xl:flex-col">
@@ -72,7 +73,7 @@ export function DashboardPage() {
 
             <MyTasksCard workspace={workspace} />
             <div className="min-w-0 md:col-span-1 xl:col-span-2">
-              <AlertsCard alerts={sortAlerts([...commercialAlerts(workspace), ...workspace.alerts])} />
+              <AlertsCard alerts={sortAlerts([...financeAlerts(workspace), ...commercialAlerts(workspace), ...workspace.alerts])} />
             </div>
 
             <SupplierPaymentsCard workspace={workspace} />

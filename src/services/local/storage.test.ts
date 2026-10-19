@@ -77,28 +77,58 @@ describe('local data source', () => {
   })
 })
 
-describe('migration v2 → v3', () => {
-  it('upgrades Phase 2 data keeping user changes and adding commercial records', async () => {
-    const { mockClients } = await import('@/data/mock')
-    const { createProject } = await import('@/domain/projects')
-    const { testContext } = await import('@/domain/__tests__/helpers')
-    // Simulate a Phase 2 store: legacy clients with inline price lists, no commercial collections, plus a user project.
-    const v3 = buildSeedDataset()
-    const { ds: withUserProject, projectId } = createProject(v3, projectInput(), 'user-req', testContext())
-    const { priceEntries: _p, quotations: _q, purchaseOrders: _o, ...rest } = withUserProject
-    const v2 = { ...rest, schemaVersion: 2, clients: mockClients }
-    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 2, savedAt: 'x', data: v2 }) })
+/** Rebuilds the persisted shape of an older schema from today's seed. */
+async function legacyDataset(version: 2 | 3) {
+  const mocks = await import('@/data/mock')
+  const { createProject } = await import('@/domain/projects')
+  const { testContext } = await import('@/domain/__tests__/helpers')
+  const v4 = buildSeedDataset()
+  const { ds, projectId } = createProject(v4, projectInput(), 'user-req', testContext())
+  const {
+    legalEntities: _le, invoices: _i, receipts: _r, collectionActions: _c, agreements: _a, costs: _co, obligations: _o, supplierPayments: _sp, exchangeRates: _fx, audit: _au, suppliers: _s,
+    ...rest
+  } = ds
+  const v3 = { ...rest, schemaVersion: 3, suppliers: mocks.mockSuppliers, invoices: mocks.mockInvoices, payables: mocks.mockPayables, payments: mocks.mockPayments }
+  if (version === 3) return { data: v3, projectId, tasks: ds.tasks.length }
+  const { priceEntries: _p, quotations: _q, purchaseOrders: _po, ...v2rest } = v3
+  return { data: { ...v2rest, schemaVersion: 2, clients: mocks.mockClients }, projectId, tasks: ds.tasks.length }
+}
 
+describe('storage migrations', () => {
+  it('v2 → v4 keeps Phase 2 data and adds commercial and finance records', async () => {
+    const { data, projectId, tasks } = await legacyDataset(2)
+    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 2, savedAt: 'x', data }) })
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(3)
+    expect(dataset!.schemaVersion).toBe(4)
     expect(dataset!.projects.some((p) => p.id === projectId)).toBe(true)
-    expect(dataset!.tasks.length).toBe(withUserProject.tasks.length)
+    expect(dataset!.tasks.length).toBe(tasks)
     expect(dataset!.clients.every((c) => c.policy && !('priceLists' in c))).toBe(true)
-    expect(dataset!.priceEntries.some((e) => e.id === 'tar_pl_nordvik_2026_immigration')).toBe(true)
     expect(dataset!.quotations.length).toBeGreaterThan(0)
-    // Persisted once in the new version.
-    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(3)
+    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(4)
     expect(readDataset(storage).issue).toBeUndefined()
+  })
+
+  it('v3 → v4 converts flat finance records preserving collected and paid amounts', async () => {
+    const { mockInvoices, mockPayables } = await import('@/data/mock')
+    const { invoiceFinancials, obligationFinancials } = await import('@/domain/finance/derive')
+    const { data } = await legacyDataset(3)
+    // A user edit made in Phase 3 must survive.
+    data.projects[0] = { ...data.projects[0], notes: 'Nota de Fase 3' }
+    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 3, savedAt: 'x', data }) })
+    const { dataset, issue } = readDataset(storage)
+    expect(issue).toBe('migrated')
+    const ds = dataset!
+    expect(ds.projects[0].notes).toBe('Nota de Fase 3')
+    expect('payables' in ds || 'payments' in ds).toBe(false)
+    for (const legacy of mockInvoices) {
+      const inv = ds.invoices.find((i) => i.id === legacy.id)!
+      expect(invoiceFinancials(ds, inv, '2026-10-19').paid).toBe(legacy.status === 'draft' ? 0 : legacy.collected)
+      expect(invoiceFinancials(ds, inv, '2026-10-19').total).toBe(legacy.amount)
+    }
+    for (const legacy of mockPayables) {
+      expect(obligationFinancials(ds, ds.obligations.find((o) => o.id === legacy.id)!, '2026-10-19').paid).toBe(legacy.paid)
+    }
+    expect(ds.costs.every((c) => !c.projectId || ds.projects.some((p) => p.id === c.projectId))).toBe(true)
   })
 })

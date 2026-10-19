@@ -1,9 +1,11 @@
-import { ArrowLeftRight, FilterX, ReceiptText, Truck } from 'lucide-react'
+import { ArrowLeftRight, Building2, FilterX, HandCoins, Plus, ReceiptText, Truck, Wallet } from 'lucide-react'
 import { motion } from 'motion/react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { useToast } from '@/components/feedback/useToast'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { FilterSelect } from '@/components/ui/FilterSelect'
@@ -14,32 +16,41 @@ import { SectionTitle } from '@/components/ui/SectionTitle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TabPanel, Tabs } from '@/components/ui/Tabs'
-import { financialStatusMeta, invoiceStatusMeta, payableStatusMeta } from '@/config/catalogs'
-import { projectPath } from '@/config/navigation'
-import { projectBudget, projectEstimatedCost } from '@/features/projects/selectors'
-import { useWorkspace, type Workspace } from '@/hooks/useWorkspace'
-import { daysUntil } from '@/lib/dates'
-import { formatCurrency, formatPercent } from '@/lib/format'
-import { currencyEntries, CURRENCY_ORDER } from '@/lib/money'
-import { cardVariants, staggerVariants } from '@/lib/motion'
-import { matches } from '@/lib/search'
-import type { CurrencyCode, InvoiceStatus, PayableStatus, Project } from '@/types/domain'
 import { DEMO_TODAY } from '@/config/brand'
+import { invoiceStatusMeta, payableStatusMeta } from '@/config/catalogs'
 import { purchaseOrderStatusMeta, quotationStatusMeta } from '@/config/commercial'
+import { supplierKindLabel } from '@/config/finance'
+import { clientPath, projectPath, supplierPath } from '@/config/navigation'
 import { hasAmount } from '@/domain/commercial/money'
 import { projectCommercial } from '@/domain/commercial/traceability'
-import type { PurchaseOrderStatus, QuotationStatus } from '@/types/domain'
+import { receiptUnallocated } from '@/domain/finance/derive'
+import { addMoney } from '@/domain/finance/money'
+import { companyExpenses, projectResults, type CurrencyResult } from '@/domain/finance/results'
+import { useActions } from '@/hooks/useActions'
+import { useWorkspace, type Workspace } from '@/hooks/useWorkspace'
+import { formatCurrency, formatMoney } from '@/lib/format'
+import { currencyEntries, CURRENCY_ORDER, type MoneyByCurrency } from '@/lib/money'
+import { cardVariants, staggerVariants } from '@/lib/motion'
+import { matches } from '@/lib/search'
+import type { CurrencyCode, InvoiceStatus, PayableStatus, Project, PurchaseOrderStatus, QuotationStatus, Supplier } from '@/types/domain'
 import { CashflowChartCard } from './components/CashflowChartCard'
 import { CommercialOverview, PendingAuthorizationView, PurchaseOrdersView, QuotationsView } from './components/CommercialViews'
 import { CurrencyIndicators } from './components/CurrencyIndicators'
 import { CurrencyLedgerCard } from './components/CurrencyLedgerCard'
-import { invoiceColumns, payableColumns, paymentColumns } from './components/ledgerColumns'
-import { invoiceOutstanding, payableOutstanding, receivablesAging, summarizeLedger } from './selectors'
+import { ExchangeRatesPanel } from './components/ExchangeRatesPanel'
+import { costColumns, invoiceColumns, obligationColumns, receiptColumns, supplierPaymentColumns } from './components/ledgerColumns'
+import { INSUFFICIENT, MarginValue } from './components/ResultBlocks'
+import { NewInvoiceModal } from './modals/NewInvoiceModal'
+import { ObligationDetailModal, SupplierPaymentDetailModal, SupplierPaymentModal } from './modals/PaymentModals'
+import { ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
+import { CostModal, ObligationModal, SupplierFormModal } from './modals/SupplierModals'
+import { obligationOutstanding, outstandingOf, receivablesAging, summarizeLedger, supplierBalances } from './selectors'
 
-const VIEWS = ['resumen', 'comercial', 'cotizaciones', 'ordenes', 'pendientes', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos'] as const
+const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'comercial', 'cotizaciones', 'ordenes', 'pendientes'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
 const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes']
+const SEARCHABLE: View[] = ['facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
   const { workspace, loading } = useWorkspace()
@@ -48,7 +59,7 @@ export function FinancePage() {
   const view: View = isView(viewParam) ? viewParam : 'resumen'
   const currency = (params.get('moneda') ?? '') as CurrencyCode | ''
   const status = params.get('estado') ?? ''
-  const direction = params.get('direccion') ?? ''
+  const scope = params.get('ambito') ?? ''
   const q = params.get('q') ?? ''
   const client = params.get('cliente') ?? ''
   const pendingCount = useMemo(() => {
@@ -81,16 +92,19 @@ export function FinancePage() {
     )
 
   const usedCurrencies = useMemo(
-    () => CURRENCY_ORDER.filter((c) => workspace?.invoices.some((i) => i.currency === c) || workspace?.payables.some((p) => p.currency === c)),
+    () =>
+      CURRENCY_ORDER.filter(
+        (c) => workspace?.invoices.some((i) => i.currency === c) || workspace?.obligations.some((o) => o.currency === c) || workspace?.costs.some((x) => x.currency === c),
+      ),
     [workspace],
   )
-  const hasFilters = Boolean(currency || status || direction || q || client)
+  const hasFilters = Boolean(currency || status || scope || q || client)
 
   return (
     <div className="pt-[5px]">
       <PageHeader
         title="Finanzas"
-        description="Facturación, cobranzas y obligaciones con proveedores por moneda de origen. Sin cálculos impositivos ni de tipo de cambio."
+        description="Facturación, cobranzas, proveedores, pagos y resultados por moneda de origen. Sin cálculos impositivos ni conversión de monedas."
       />
 
       {loading || !workspace ? (
@@ -113,23 +127,22 @@ export function FinancePage() {
               onChange={setView}
               items={[
                 { value: 'resumen', label: 'Resumen' },
+                { value: 'facturas', label: 'Facturas', count: workspace.invoices.length },
+                { value: 'cobranzas', label: 'Cuentas por cobrar', count: workspace.invoices.filter((i) => i.lifecycle === 'issued' && outstandingOf(workspace, i) > 0).length },
+                { value: 'proveedores', label: 'Proveedores', count: workspace.obligations.filter((o) => obligationOutstanding(workspace, o) > 0 && o.lifecycle !== 'cancelled').length },
+                { value: 'pagos', label: 'Cobros y pagos', count: workspace.receipts.length + workspace.supplierPayments.length },
+                { value: 'costos', label: 'Costos y gastos' },
+                { value: 'resultados', label: 'Resultados por proyecto' },
                 { value: 'comercial', label: 'Comercial' },
                 { value: 'cotizaciones', label: 'Cotizaciones', count: workspace.quotations.length },
                 { value: 'ordenes', label: 'Órdenes de compra', count: workspace.purchaseOrders.filter((p) => p.status === 'active').length },
                 { value: 'pendientes', label: 'Pendiente de OC', count: pendingCount },
-                { value: 'facturas', label: 'Facturas', count: workspace.invoices.length },
-                { value: 'cobranzas', label: 'Cuentas por cobrar', count: workspace.invoices.filter((i) => invoiceOutstanding(i) > 0).length },
-                { value: 'proveedores', label: 'Proveedores', count: workspace.payables.filter((p) => payableOutstanding(p) > 0).length },
-                { value: 'pagos', label: 'Pagos', count: workspace.payments.length },
-                { value: 'costos', label: 'Costos por proyecto' },
               ]}
             />
           </motion.div>
 
           <div className="mt-[16px] flex flex-wrap items-center gap-[10px]">
-            {view !== 'resumen' && (
-              <SearchField value={q} onChange={(v) => setParam('q', v)} label="Buscar en finanzas" placeholder="Comprobante, cliente, proveedor…" />
-            )}
+            {SEARCHABLE.includes(view) && <SearchField value={q} onChange={(v) => setParam('q', v)} label="Buscar en finanzas" placeholder="Comprobante, cliente, proveedor…" />}
             <FilterSelect
               size="sm"
               label="Moneda"
@@ -139,13 +152,7 @@ export function FinancePage() {
               options={usedCurrencies.map((c) => ({ value: c, label: c, icon: <CurrencyFlag currency={c} className="size-[16px]" /> }))}
             />
             {COMMERCIAL_VIEWS.includes(view) && (
-              <FilterSelect
-                size="sm"
-                label="Cliente"
-                value={client}
-                onChange={(v) => setParam('cliente', v)}
-                options={workspace.clients.map((c) => ({ value: c.id, label: c.name }))}
-              />
+              <FilterSelect size="sm" label="Cliente" value={client} onChange={(v) => setParam('cliente', v)} options={workspace.clients.map((c) => ({ value: c.id, label: c.name }))} />
             )}
             {view === 'cotizaciones' && (
               <FilterSelect
@@ -187,11 +194,23 @@ export function FinancePage() {
               <FilterSelect
                 size="sm"
                 label="Tipo"
-                value={direction}
-                onChange={(v) => setParam('direccion', v)}
+                value={status}
+                onChange={(v) => setParam('estado', v)}
                 options={[
-                  { value: 'incoming', label: 'Cobros' },
+                  { value: 'incoming', label: 'Cobros de clientes' },
                   { value: 'outgoing', label: 'Pagos a proveedores' },
+                ]}
+              />
+            )}
+            {view === 'costos' && (
+              <FilterSelect
+                size="sm"
+                label="Ámbito"
+                value={scope}
+                onChange={(v) => setParam('ambito', v)}
+                options={[
+                  { value: 'project', label: 'Costos de proyectos' },
+                  { value: 'company', label: 'Gastos generales' },
                 ]}
               />
             )}
@@ -206,16 +225,17 @@ export function FinancePage() {
           <div className="mt-[20px]">
             <TabPanel idPrefix="finance-tabs" activeValue={view}>
               <motion.div variants={staggerVariants} initial="hidden" animate="show" className="flex flex-col gap-[24px]">
+                {view === 'resumen' && <SummaryView workspace={workspace} currency={currency} currencies={usedCurrencies} />}
+                {view === 'facturas' && <InvoicesView workspace={workspace} currency={currency} status={status} q={q} />}
+                {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} />}
+                {view === 'proveedores' && <SuppliersView workspace={workspace} currency={currency} status={status} q={q} />}
+                {view === 'pagos' && <PaymentsView workspace={workspace} currency={currency} direction={status} q={q} />}
+                {view === 'costos' && <CostsView workspace={workspace} currency={currency} scope={scope} q={q} />}
+                {view === 'resultados' && <ResultsView workspace={workspace} currency={currency} q={q} />}
                 {view === 'comercial' && <CommercialOverview workspace={workspace} currency={currency} client={client} />}
                 {view === 'cotizaciones' && <QuotationsView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
                 {view === 'ordenes' && <PurchaseOrdersView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
                 {view === 'pendientes' && <PendingAuthorizationView workspace={workspace} currency={currency} client={client} q={q} />}
-                {view === 'resumen' && <SummaryView workspace={workspace} currency={currency} currencies={usedCurrencies} />}
-                {view === 'facturas' && <InvoicesView workspace={workspace} currency={currency} status={status} q={q} />}
-                {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} />}
-                {view === 'proveedores' && <PayablesView workspace={workspace} currency={currency} status={status} q={q} />}
-                {view === 'pagos' && <PaymentsView workspace={workspace} currency={currency} direction={direction} q={q} />}
-                {view === 'costos' && <CostsView workspace={workspace} currency={currency} q={q} />}
               </motion.div>
             </TabPanel>
           </div>
@@ -231,18 +251,16 @@ interface ViewProps {
   q?: string
 }
 
+const joinMoney = (m: MoneyByCurrency) => currencyEntries(m).map(([c, v]) => formatCurrency(v, c, { decimals: 2 })).join(' · ') || '—'
+
 function SummaryView({ workspace, currency, currencies }: ViewProps & { currencies: CurrencyCode[] }) {
-  const ledger = summarizeLedger(workspace.invoices, workspace.payables)
+  const ledger = summarizeLedger(workspace)
   const shown = currency ? [currency] : currencies
+  const general = companyExpenses(workspace.dataset)
   return (
     <>
       <Card aria-labelledby="fin-position" className="px-[18px] pb-[18px] pt-[19px]">
-        <SectionTitle
-          id="fin-position"
-          title="Posición por moneda"
-          description="Facturado, cobrado, pagado y pendiente. Cada moneda se presenta por separado."
-          className="px-[2px]"
-        />
+        <SectionTitle id="fin-position" title="Posición por moneda" description="Facturado, cobrado, obligaciones y pagos. Cada moneda se presenta por separado." className="px-[2px]" />
         <div className="mt-[18px] grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
           {shown.map((c) => (
             <CurrencyLedgerCard key={c} currency={c} ledger={ledger} />
@@ -251,27 +269,39 @@ function SummaryView({ workspace, currency, currencies }: ViewProps & { currenci
       </Card>
       <div className="grid grid-cols-1 gap-[24px] xl:grid-cols-3">
         <div className="min-w-0 xl:col-span-2">
-          <CashflowChartCard invoices={workspace.invoices} payments={workspace.payments} />
+          <CashflowChartCard workspace={workspace} />
         </div>
         <AgingCard workspace={workspace} currency={currency} />
       </div>
+      <Card aria-labelledby="fin-general" className="px-[20px] pb-[18px] pt-[20px]">
+        <SectionTitle
+          id="fin-general"
+          size="sm"
+          title="Gastos generales de la empresa"
+          description="Separados de los costos de proyectos. No se imputan a ningún resultado por proyecto."
+          action={
+            <Link to="/finanzas?vista=costos&ambito=company" className="text-[13.5px] font-medium text-ink-secondary underline-offset-4 hover:underline">
+              Ver detalle
+            </Link>
+          }
+        />
+        <p className="tabular mt-[12px] text-[17px] font-semibold">{joinMoney(general)}</p>
+      </Card>
+      <ExchangeRatesPanel workspace={workspace} />
     </>
   )
 }
 
 function AgingCard({ workspace, currency }: ViewProps) {
   const invoices = currency ? workspace.invoices.filter((i) => i.currency === currency) : workspace.invoices
-  const buckets = receivablesAging(invoices, (iso) => -daysUntil(iso))
+  const buckets = receivablesAging(workspace, invoices)
   return (
     <Card aria-labelledby="fin-aging" className="h-full px-[20px] pb-[18px] pt-[20px]">
       <SectionTitle id="fin-aging" size="sm" title="Antigüedad de saldos" description="Cuentas por cobrar según días de atraso" />
       <ul className="mt-[16px] flex flex-col gap-[8px]">
         {buckets.map((b) => (
           <li key={b.id}>
-            <Link
-              to="/finanzas?vista=cobranzas"
-              className="flex items-start justify-between gap-3 rounded-[14px] bg-surface-muted px-[14px] py-[11px] transition-colors hover:bg-surface-sunken"
-            >
+            <Link to="/finanzas?vista=cobranzas" className="flex items-start justify-between gap-3 rounded-[14px] bg-surface-muted px-[14px] py-[11px] transition-colors hover:bg-surface-sunken">
               <span>
                 <span className="block text-[14px] font-medium">{b.label}</span>
                 <span className="block text-[12px] text-muted">{b.count} facturas</span>
@@ -295,69 +325,89 @@ function AgingCard({ workspace, currency }: ViewProps) {
   )
 }
 
-function InvoicesView({ workspace, currency, status, q = '' }: ViewProps & { status: string }) {
-  const rows = workspace.invoices
-    .filter(
-      (i) =>
-        (!currency || i.currency === currency) &&
-        (!status || i.status === status) &&
-        matches(q, i.number, workspace.clientById.get(i.clientId)?.name, workspace.projectById.get(i.projectId)?.code),
-    )
-    .sort((a, b) => b.issueDate.localeCompare(a.issueDate))
-  const ledger = summarizeLedger(rows, [])
+const invoiceMatches = (ws: Workspace, q: string) => (i: Workspace['invoices'][number]) =>
+  matches(q, i.number, i.externalRef, ws.clientById.get(i.clientId)?.name, ws.projectById.get(i.projectId)?.code)
+
+function InvoicesView({ workspace: ws, currency, status, q = '' }: ViewProps & { status: string }) {
+  const [creating, setCreating] = useState(false)
+  const rows = ws.invoices
+    .filter((i) => (!currency || i.currency === currency) && (!status || ws.invoiceFin.get(i.id)?.status === status) && invoiceMatches(ws, q)(i))
+    .sort((a, b) => b.issueDate.localeCompare(a.issueDate) || b.number.localeCompare(a.number))
+  const ledger = summarizeLedger(ws, rows, [])
   return (
     <Card aria-labelledby="fin-invoices" className="px-[19px] pb-[19px] pt-[19px]">
       <SectionTitle
         id="fin-invoices"
-        title="Facturas emitidas"
-        description={`${rows.length} comprobantes · facturado ${currencyEntries(ledger.invoiced).map(([c, v]) => formatCurrency(v, c)).join(' · ') || '—'}`}
+        title="Facturas"
+        description={`${rows.length} comprobantes · emitido ${joinMoney(ledger.invoiced)}`}
+        action={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+            Nueva factura
+          </Button>
+        }
       />
       <DataTable
         className="mt-[18px]"
         caption="Facturas"
         rows={rows}
         getRowId={(i) => i.id}
-        rowHref={(i) => `${projectPath(i.projectId)}?tab=finanzas`}
         minWidth={1180}
-        columns={invoiceColumns(workspace)}
+        columns={invoiceColumns(ws)}
         empty={<EmptyState icon={ReceiptText} title="No hay facturas que coincidan" description="Ajustá la búsqueda o los filtros." />}
       />
+      <NewInvoiceModal open={creating} onClose={() => setCreating(false)} workspace={ws} />
     </Card>
   )
 }
 
-function ReceivablesView({ workspace, currency, q = '' }: ViewProps) {
-  const open = workspace.invoices
-    .filter(
-      (i) =>
-        invoiceOutstanding(i) > 0 &&
-        (!currency || i.currency === currency) &&
-        matches(q, i.number, workspace.clientById.get(i.clientId)?.name, workspace.projectById.get(i.projectId)?.code),
-    )
+function ReceivablesView({ workspace: ws, currency, q = '' }: ViewProps) {
+  const [recording, setRecording] = useState(false)
+  const [receiptId, setReceiptId] = useState<string>()
+  const open = ws.invoices
+    .filter((i) => i.lifecycle === 'issued' && outstandingOf(ws, i) > 0 && (!currency || i.currency === currency) && invoiceMatches(ws, q)(i))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const credits = ws.receipts.filter((r) => receiptUnallocated(r) > 0 && (!currency || r.currency === currency))
   return (
     <>
-      <AgingStrip workspace={workspace} currency={currency} />
+      <AgingStrip workspace={ws} currency={currency} />
       <Card aria-labelledby="fin-receivables" className="px-[19px] pb-[19px] pt-[19px]">
-        <SectionTitle id="fin-receivables" title="Cuentas por cobrar" description="Facturas con saldo pendiente, ordenadas por vencimiento" />
+        <SectionTitle
+          id="fin-receivables"
+          title="Cuentas por cobrar"
+          description="Facturas emitidas con saldo pendiente, ordenadas por vencimiento. Abrí una factura para registrar gestiones de cobranza."
+          action={
+            <Button size="sm" onClick={() => setRecording(true)}>
+              <HandCoins aria-hidden className="size-[15px]" strokeWidth={2} />
+              Registrar cobro
+            </Button>
+          }
+        />
         <DataTable
           className="mt-[18px]"
           caption="Cuentas por cobrar"
           rows={open}
           getRowId={(i) => i.id}
-          rowHref={(i) => `${projectPath(i.projectId)}?tab=finanzas`}
           minWidth={1180}
-          columns={invoiceColumns(workspace)}
-          empty={<EmptyState icon={ReceiptText} title="Sin saldos pendientes" description="Todas las facturas están cobradas." />}
+          columns={invoiceColumns(ws)}
+          empty={<EmptyState icon={ReceiptText} title="Sin saldos pendientes" description="Todas las facturas emitidas están cobradas." />}
         />
       </Card>
+      {credits.length > 0 && (
+        <Card aria-labelledby="fin-credits" className="px-[19px] pb-[19px] pt-[19px]">
+          <SectionTitle id="fin-credits" title="Saldos a favor de clientes" description="Cobros con importe sin aplicar. Pueden aplicarse a facturas del mismo cliente y moneda." />
+          <DataTable className="mt-[18px]" caption="Cobros con saldo sin aplicar" rows={credits} getRowId={(r) => r.id} minWidth={900} columns={receiptColumns(ws, { onOpen: setReceiptId })} />
+        </Card>
+      )}
+      <RecordReceiptModal open={recording} onClose={() => setRecording(false)} workspace={ws} />
+      <ReceiptDetailModal receiptId={receiptId} onClose={() => setReceiptId(undefined)} workspace={ws} />
     </>
   )
 }
 
 function AgingStrip({ workspace, currency }: ViewProps) {
   const invoices = currency ? workspace.invoices.filter((i) => i.currency === currency) : workspace.invoices
-  const buckets = receivablesAging(invoices, (iso) => -daysUntil(iso))
+  const buckets = receivablesAging(workspace, invoices)
   return (
     <Card aria-label="Antigüedad de saldos" className="grid gap-[14px] p-[18px] sm:grid-cols-2 xl:grid-cols-4">
       {buckets.map((b) => (
@@ -383,115 +433,297 @@ function AgingStrip({ workspace, currency }: ViewProps) {
   )
 }
 
-function PayablesView({ workspace, currency, status, q = '' }: ViewProps & { status: string }) {
-  const rows = workspace.payables
+function SuppliersView({ workspace: ws, currency, status, q = '' }: ViewProps & { status: string }) {
+  const [dialog, setDialog] = useState<'supplier' | 'obligation' | null>(null)
+  const [obligationId, setObligationId] = useState<string>()
+  const [payFor, setPayFor] = useState<string>()
+  const suppliers = ws.suppliers.filter((s) => matches(q, s.name, s.contactName, ...s.categories)).sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
+  const rows = ws.obligations
     .filter(
-      (p) =>
-        (!currency || p.currency === currency) &&
-        (!status || p.status === status) &&
-        matches(q, p.reference, workspace.supplierById.get(p.supplierId)?.name, workspace.projectById.get(p.projectId)?.code),
+      (o) =>
+        (!currency || o.currency === currency) &&
+        (!status || ws.obligationFin.get(o.id)?.status === status) &&
+        matches(q, o.reference, o.description, ws.supplierById.get(o.supplierId)?.name, o.projectId ? ws.projectById.get(o.projectId)?.code : undefined),
     )
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-  const ledger = summarizeLedger([], rows)
+  const ledger = summarizeLedger(ws, [], rows)
   return (
-    <Card aria-labelledby="fin-payables" className="px-[19px] pb-[19px] pt-[19px]">
-      <SectionTitle
-        id="fin-payables"
-        title="Obligaciones con proveedores"
-        description={`Pendiente de pago: ${currencyEntries(ledger.payable).map(([c, v]) => formatCurrency(v, c)).join(' · ') || '—'}`}
-      />
-      <DataTable
-        className="mt-[18px]"
-        caption="Cuentas a pagar"
-        rows={rows}
-        getRowId={(p) => p.id}
-        rowHref={(p) => `${projectPath(p.projectId)}?tab=finanzas`}
-        minWidth={1120}
-        columns={payableColumns(workspace)}
-        empty={<EmptyState icon={Truck} title="No hay obligaciones que coincidan" description="Ajustá la búsqueda o los filtros." />}
-      />
-    </Card>
+    <>
+      <Card aria-labelledby="fin-suppliers" className="px-[19px] pb-[19px] pt-[19px]">
+        <SectionTitle
+          id="fin-suppliers"
+          title="Proveedores"
+          description={`${ws.suppliers.filter((s) => s.active).length} activos · saldo adeudado por moneda`}
+          action={
+            <Button size="sm" variant="outline" onClick={() => setDialog('supplier')}>
+              <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+              Nuevo proveedor
+            </Button>
+          }
+        />
+        <DataTable<Supplier>
+          className="mt-[18px]"
+          caption="Proveedores"
+          rows={suppliers}
+          getRowId={(s) => s.id}
+          rowHref={(s) => supplierPath(s.id)}
+          minWidth={900}
+          dense
+          columns={[
+            {
+              id: 'name',
+              header: 'Proveedor',
+              width: '30%',
+              cell: (s) => (
+                <span className="block min-w-0">
+                  <span className={s.active ? 'block truncate font-medium' : 'block truncate font-medium text-muted'}>{s.name}</span>
+                  <span className="block truncate text-[12px] text-muted">{supplierKindLabel[s.kind]}</span>
+                </span>
+              ),
+            },
+            { id: 'country', header: 'País', width: '90px', cell: (s) => s.country },
+            { id: 'cur', header: 'Moneda pref.', width: '110px', cell: (s) => s.preferredCurrency },
+            { id: 'owed', header: 'Saldo adeudado', className: 'tabular font-medium', cell: (s) => joinMoney(supplierBalances(ws, s.id)) },
+            { id: 'active', header: 'Estado', width: '120px', cell: (s) => <StatusBadge meta={s.active ? { label: 'Activo', tone: 'success' } : { label: 'Inactivo', tone: 'neutral' }} /> },
+          ]}
+          empty={<EmptyState icon={Building2} title="Sin proveedores" />}
+        />
+      </Card>
+      <Card aria-labelledby="fin-obligations" className="px-[19px] pb-[19px] pt-[19px]">
+        <SectionTitle
+          id="fin-obligations"
+          title="Obligaciones con proveedores"
+          description={`Pendiente de pago: ${joinMoney(ledger.payable)}`}
+          action={
+            <Button size="sm" onClick={() => setDialog('obligation')}>
+              <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+              Registrar obligación
+            </Button>
+          }
+        />
+        <DataTable
+          className="mt-[18px]"
+          caption="Cuentas a pagar"
+          rows={rows}
+          getRowId={(o) => o.id}
+          minWidth={1180}
+          columns={obligationColumns(ws, { onOpen: setObligationId })}
+          empty={<EmptyState icon={Truck} title="No hay obligaciones que coincidan" description="Ajustá la búsqueda o los filtros." />}
+        />
+      </Card>
+      <SupplierFormModal open={dialog === 'supplier'} onClose={() => setDialog(null)} />
+      <ObligationModal open={dialog === 'obligation'} onClose={() => setDialog(null)} workspace={ws} />
+      <ObligationDetailModal obligationId={obligationId} onClose={() => setObligationId(undefined)} workspace={ws} onPay={(id) => { setObligationId(undefined); setPayFor(id) }} />
+      <SupplierPaymentModal open={Boolean(payFor)} onClose={() => setPayFor(undefined)} workspace={ws} obligationId={payFor} />
+    </>
   )
 }
 
-function PaymentsView({ workspace, currency, direction, q = '' }: ViewProps & { direction: string }) {
-  const rows = workspace.payments
-    .filter((p) => (!currency || p.currency === currency) && (!direction || p.direction === direction) && matches(q, p.counterparty))
-    .sort((a, b) => b.date.localeCompare(a.date))
+function PaymentsView({ workspace: ws, currency, direction, q = '' }: ViewProps & { direction: string }) {
+  const [dialog, setDialog] = useState<'receipt' | 'payment' | null>(null)
+  const [receiptId, setReceiptId] = useState<string>()
+  const [paymentId, setPaymentId] = useState<string>()
+  const receipts = ws.receipts
+    .filter((r) => (!currency || r.currency === currency) && matches(q, r.number, r.reference, ws.clientById.get(r.clientId)?.name))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number))
+  const payments = ws.supplierPayments
+    .filter((p) => (!currency || p.currency === currency) && matches(q, p.number, p.reference, ws.supplierById.get(p.supplierId)?.name))
+    .sort((a, b) => b.date.localeCompare(a.date) || b.number.localeCompare(a.number))
   return (
-    <Card aria-labelledby="fin-payments" className="px-[19px] pb-[19px] pt-[19px]">
-      <SectionTitle id="fin-payments" title="Movimientos" description="Cobros de clientes y pagos a proveedores registrados" />
-      <DataTable
-        className="mt-[18px]"
-        caption="Cobros y pagos"
-        rows={rows}
-        getRowId={(p) => p.id}
-        minWidth={900}
-        columns={paymentColumns(workspace)}
-        empty={<EmptyState icon={ArrowLeftRight} title="Sin movimientos" description="No hay cobros ni pagos para los filtros elegidos." />}
-      />
-    </Card>
+    <>
+      {direction !== 'outgoing' && (
+        <Card aria-labelledby="fin-receipts" className="px-[19px] pb-[19px] pt-[19px]">
+          <SectionTitle
+            id="fin-receipts"
+            title="Cobros de clientes"
+            description="Dinero recibido y su aplicación a facturas. Las reversiones se conservan en el historial."
+            action={
+              <Button size="sm" onClick={() => setDialog('receipt')}>
+                <HandCoins aria-hidden className="size-[15px]" strokeWidth={2} />
+                Registrar cobro
+              </Button>
+            }
+          />
+          <DataTable
+            className="mt-[18px]"
+            caption="Cobros"
+            rows={receipts}
+            getRowId={(r) => r.id}
+            minWidth={980}
+            columns={receiptColumns(ws, { onOpen: setReceiptId })}
+            empty={<EmptyState icon={ArrowLeftRight} title="Sin cobros" description="No hay cobros para los filtros elegidos." />}
+          />
+        </Card>
+      )}
+      {direction !== 'incoming' && (
+        <Card aria-labelledby="fin-spayments" className="px-[19px] pb-[19px] pt-[19px]">
+          <SectionTitle
+            id="fin-spayments"
+            title="Pagos a proveedores"
+            description="Pagos totales o parciales aplicados a obligaciones aprobadas. Los anticipos quedan como saldo a favor."
+            action={
+              <Button size="sm" onClick={() => setDialog('payment')}>
+                <Wallet aria-hidden className="size-[15px]" strokeWidth={2} />
+                Registrar pago
+              </Button>
+            }
+          />
+          <DataTable
+            className="mt-[18px]"
+            caption="Pagos a proveedores"
+            rows={payments}
+            getRowId={(p) => p.id}
+            minWidth={980}
+            columns={supplierPaymentColumns(ws, { onOpen: setPaymentId })}
+            empty={<EmptyState icon={ArrowLeftRight} title="Sin pagos" description="No hay pagos para los filtros elegidos." />}
+          />
+        </Card>
+      )}
+      <RecordReceiptModal open={dialog === 'receipt'} onClose={() => setDialog(null)} workspace={ws} />
+      <SupplierPaymentModal open={dialog === 'payment'} onClose={() => setDialog(null)} workspace={ws} />
+      <ReceiptDetailModal receiptId={receiptId} onClose={() => setReceiptId(undefined)} workspace={ws} />
+      <SupplierPaymentDetailModal paymentId={paymentId} onClose={() => setPaymentId(undefined)} workspace={ws} />
+    </>
   )
 }
 
-function CostsView({ workspace, currency, q = '' }: ViewProps) {
-  const rows = workspace.projects
+function CostsView({ workspace: ws, currency, scope, q = '' }: ViewProps & { scope: string }) {
+  const actions = useActions()
+  const { notify } = useToast()
+  const [adding, setAdding] = useState<'project' | 'company' | null>(null)
+  const [voiding, setVoiding] = useState<string>()
+  const rows = ws.costs
     .filter(
-      (p) =>
-        (!currency || p.currency === currency) &&
-        matches(q, p.code, workspace.clientById.get(p.clientId)?.name, workspace.personById.get(p.beneficiaryId)?.name),
+      (c) =>
+        (!currency || c.currency === currency) &&
+        (!scope || c.scope === scope) &&
+        matches(q, c.description, c.projectId ? ws.projectById.get(c.projectId)?.code : undefined, c.supplierId ? ws.supplierById.get(c.supplierId)?.name : undefined),
     )
-    .sort((a, b) => b.startDate.localeCompare(a.startDate))
-  const recorded = (p: Project) => workspace.payables.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.amount, 0)
-  const paid = (p: Project) => workspace.payables.filter((x) => x.projectId === p.id).reduce((s, x) => s + x.paid, 0)
-
+    .sort((a, b) => b.date.localeCompare(a.date))
+  const total = (s: 'project' | 'company') => {
+    const m: MoneyByCurrency = {}
+    for (const c of rows) if (c.scope === s && c.status === 'incurred') m[c.currency] = addMoney(m[c.currency] ?? 0, c.amount)
+    return m
+  }
   return (
-    <Card aria-labelledby="fin-costs" className="px-[19px] pb-[19px] pt-[19px]">
-      <SectionTitle
-        id="fin-costs"
-        title="Costos por proyecto"
-        description="Presupuesto, costo estimado y costos ya registrados de proveedores, en la moneda de cada proyecto"
+    <>
+      <Card aria-label="Totales de costos" className="grid gap-[14px] p-[18px] sm:grid-cols-2">
+        {(['project', 'company'] as const).map((s) => (
+          <div key={s} className="rounded-tile bg-surface-muted p-[16px]">
+            <p className="text-[14px] text-ink-secondary">{s === 'project' ? 'Costos reales de proyectos' : 'Gastos generales de la empresa'}</p>
+            <p className="tabular mt-[12px] text-[18px] font-semibold tracking-[-0.01em]">{joinMoney(total(s))}</p>
+          </div>
+        ))}
+      </Card>
+      <Card aria-labelledby="fin-costs" className="px-[19px] pb-[19px] pt-[19px]">
+        <SectionTitle
+          id="fin-costs"
+          title="Costos y gastos registrados"
+          description="Costos reales (no estimaciones). Los gastos generales no se imputan a proyectos."
+          action={
+            <div className="flex flex-wrap gap-[8px]">
+              <Button size="sm" variant="outline" onClick={() => setAdding('company')}>
+                <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+                Gasto general
+              </Button>
+              <Button size="sm" onClick={() => setAdding('project')}>
+                <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+                Costo de proyecto
+              </Button>
+            </div>
+          }
+        />
+        <DataTable
+          className="mt-[18px]"
+          caption="Costos y gastos"
+          rows={rows}
+          getRowId={(c) => c.id}
+          minWidth={1080}
+          columns={costColumns(ws, { onVoid: setVoiding })}
+          empty={<EmptyState title="Sin costos para los filtros elegidos" />}
+        />
+      </Card>
+      <CostModal open={adding !== null} onClose={() => setAdding(null)} workspace={ws} scope={adding ?? 'project'} />
+      <ConfirmDialog
+        open={Boolean(voiding)}
+        onClose={() => setVoiding(undefined)}
+        title="Anular costo"
+        tone="danger"
+        confirmLabel="Anular"
+        reasonLabel="Motivo"
+        message="El registro se conserva como anulado y deja de computar en resultados."
+        onConfirm={async (reason) => {
+          await actions.voidCost(voiding!, reason)
+          notify({ title: 'Costo anulado' })
+        }}
       />
-      <DataTable
+    </>
+  )
+}
+
+interface ResultRow extends CurrencyResult {
+  key: string
+  project: Project
+}
+
+function ResultsView({ workspace: ws, currency, q = '' }: ViewProps) {
+  const rows: ResultRow[] = ws.projects
+    .filter((p) => matches(q, p.code, ws.clientById.get(p.clientId)?.name, ws.personById.get(p.beneficiaryId)?.name))
+    .sort((a, b) => b.startDate.localeCompare(a.startDate))
+    .flatMap((p) => projectResults(ws.dataset, p, DEMO_TODAY).map((r) => ({ ...r, key: `${p.id}:${r.currency}`, project: p })))
+    .filter((r) => !currency || r.currency === currency)
+  const m = (r: ResultRow, v: number) => formatMoney(v, r.currency)
+  return (
+    <Card aria-labelledby="fin-results" className="px-[19px] pb-[19px] pt-[19px]">
+      <SectionTitle
+        id="fin-results"
+        title="Resultados por proyecto"
+        description={`Una fila por proyecto y moneda. Margen operativo = facturado neto − costo real directo, antes de impuestos y gastos generales. Si faltan bases se indica "${INSUFFICIENT}".`}
+      />
+      <DataTable<ResultRow>
         className="mt-[18px]"
-        caption="Costos por proyecto"
+        caption="Resultados por proyecto y moneda"
         rows={rows}
-        getRowId={(p) => p.id}
-        rowHref={(p) => `${projectPath(p.id)}?tab=finanzas`}
-        minWidth={1180}
+        getRowId={(r) => r.key}
+        rowHref={(r) => `${projectPath(r.project.id)}?tab=finanzas`}
+        minWidth={1440}
+        dense
         columns={[
-          { id: 'code', header: 'Proyecto', width: '132px', className: 'tabular font-medium', cell: (p) => p.code },
-          { id: 'client', header: 'Cliente', width: '15%', cell: (p) => <span className="block truncate">{workspace.clientById.get(p.clientId)?.name}</span> },
           {
-            id: 'cur',
-            header: 'Moneda',
-            width: '92px',
-            cell: (p) => (
-              <span className="flex items-center gap-[6px]">
-                <CurrencyFlag currency={p.currency} className="size-[16px]" />
-                {p.currency}
+            id: 'project',
+            header: 'Proyecto',
+            width: '150px',
+            cell: (r) => (
+              <span className="block min-w-0">
+                <span className="tabular block font-medium">{r.project.code}</span>
+                <Link to={clientPath(r.project.clientId)} className="block truncate text-[12px] text-muted hover:underline">
+                  {ws.clientById.get(r.project.clientId)?.name}
+                </Link>
               </span>
             ),
           },
-          { id: 'budget', header: 'Presupuesto', className: 'tabular', cell: (p) => formatCurrency(projectBudget(p), p.currency) },
-          { id: 'est', header: 'Costo estimado', className: 'tabular', cell: (p) => formatCurrency(projectEstimatedCost(p), p.currency) },
-          { id: 'rec', header: 'Costos registrados', className: 'tabular', cell: (p) => formatCurrency(recorded(p), p.currency) },
-          { id: 'paid', header: 'Pagado', className: 'tabular text-ink-secondary', cell: (p) => formatCurrency(paid(p), p.currency) },
           {
-            id: 'margin',
-            header: 'Margen est.',
-            width: '104px',
-            className: 'tabular font-medium text-success',
-            cell: (p) => {
-              const b = projectBudget(p)
-              return formatPercent(b ? ((b - projectEstimatedCost(p)) / b) * 100 : 0)
-            },
+            id: 'cur',
+            header: 'Moneda',
+            width: '84px',
+            cell: (r) => (
+              <span className="flex items-center gap-[6px]">
+                <CurrencyFlag currency={r.currency} className="size-[16px]" />
+                {r.currency}
+              </span>
+            ),
           },
-          { id: 'fin', header: 'Estado', width: '128px', cell: (p) => <StatusBadge meta={financialStatusMeta[p.financialStatus]} /> },
+          { id: 'agreed', header: 'Acordado', className: 'tabular', cell: (r) => m(r, r.agreed) },
+          { id: 'inv', header: 'Facturado neto', className: 'tabular', cell: (r) => m(r, r.invoicedNet) },
+          { id: 'col', header: 'Cobrado', className: 'tabular text-success', cell: (r) => m(r, r.collected) },
+          { id: 'rec', header: 'Por cobrar', className: 'tabular', cell: (r) => m(r, r.receivable) },
+          { id: 'est', header: 'Costo est.', className: 'tabular text-ink-secondary', cell: (r) => m(r, r.estimatedCost) },
+          { id: 'act', header: 'Costo real', className: 'tabular', cell: (r) => m(r, r.actualCost) },
+          { id: 'unpaid', header: 'Impago prov.', className: 'tabular', cell: (r) => m(r, r.supplierUnpaid) },
+          { id: 'op', header: 'Margen operativo', width: '190px', cell: (r) => <MarginValue margin={r.operationalMargin} currency={r.currency} /> },
         ]}
         empty={<EmptyState title="Sin proyectos para los filtros elegidos" />}
       />
     </Card>
   )
 }
-

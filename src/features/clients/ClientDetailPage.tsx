@@ -23,7 +23,7 @@ import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/co
 import { PriceEntriesPanel } from '@/features/pricing/PriceEntriesPanel'
 import { ClientFormModal } from './components/ClientFormModal'
 import { invoiceColumns } from '@/features/finance/components/ledgerColumns'
-import { invoiceOutstanding, summarizeLedger } from '@/features/finance/selectors'
+import { outstandingOf, summarizeLedger } from '@/features/finance/selectors'
 import { projectColumns } from '@/features/projects/components/projectColumns'
 import { isActiveProject } from '@/features/projects/selectors'
 import { NotFoundPage } from '@/features/sections/NotFoundPage'
@@ -51,7 +51,7 @@ export function ClientDetailPage() {
     if (!workspace || !client) return undefined
     const projects = workspace.projects.filter((p) => p.clientId === client.id).sort((a, b) => b.startDate.localeCompare(a.startDate))
     const invoices = workspace.invoices.filter((i) => i.clientId === client.id).sort((a, b) => b.issueDate.localeCompare(a.issueDate))
-    return { client, projects, invoices, ledger: summarizeLedger(invoices, []) }
+    return { client, projects, invoices, ledger: summarizeLedger(workspace, invoices, []) }
   }, [workspace, clientId])
 
   if (loading) {
@@ -68,7 +68,7 @@ export function ClientDetailPage() {
 
   const { client, projects, invoices, ledger } = data
   const manager = workspace.staffById.get(client.accountManagerId)
-  const openInvoices = invoices.filter((i) => invoiceOutstanding(i) > 0)
+  const openInvoices = invoices.filter((i) => outstandingOf(workspace, i) > 0)
 
   const setTab = (value: ClientTab) =>
     setParams(
@@ -190,7 +190,7 @@ export function ClientDetailPage() {
                     {[
                       ['Proyectos activos', String(projects.filter(isActiveProject).length)],
                       ['Proyectos totales', String(projects.length)],
-                      ['Facturas emitidas', String(invoices.filter((i) => i.status !== 'draft').length)],
+                      ['Facturas emitidas', String(invoices.filter((i) => i.lifecycle === 'issued').length)],
                       ['Facturas vencidas', String(ledger.overdueInvoices)],
                     ].map(([label, value]) => (
                       <div key={label} className="flex items-center justify-between border-b border-line py-[10px] text-[14px] last:border-b-0">

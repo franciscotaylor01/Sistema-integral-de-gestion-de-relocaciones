@@ -1,8 +1,8 @@
-import type { Supplier } from '@/types/domain'
+import type { LegacySupplier } from './seedTypes'
 
 /* Fictional supplier network — demo data only. */
 
-export const mockSuppliers: Supplier[] = [
+export const mockSuppliers: LegacySupplier[] = [
   { id: 'sup_01', name: 'Atlas Movers International', category: 'moving', country: 'NL' },
   { id: 'sup_02', name: 'Casa Nueva Propiedades', category: 'housing', country: 'AR' },
   { id: 'sup_03', name: 'Iberia Legal Migraciones', category: 'immigration', country: 'ES' },

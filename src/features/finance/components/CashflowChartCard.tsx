@@ -6,7 +6,8 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl'
 import { monthlyCashflow, recentMonths, type CashflowPoint } from '../selectors'
 import { niceTicks } from '@/lib/chart'
 import { formatCompactNumber, formatCurrency } from '@/lib/format'
-import type { CurrencyCode, Invoice, Payment } from '@/types/domain'
+import type { Workspace } from '@/hooks/useWorkspace'
+import type { CurrencyCode } from '@/types/domain'
 
 const RADIUS = 7
 const MONTHS = 7
@@ -53,12 +54,12 @@ function ChartTooltip({ active, payload, currency }: { active?: boolean; payload
   )
 }
 
-export function CashflowChartCard({ invoices, payments }: { invoices: Invoice[]; payments: Payment[] }) {
+export function CashflowChartCard({ workspace }: { workspace: Workspace }) {
   const hatchId = `hatch-${useId().replace(/:/g, '')}`
   const animateBars = !useReducedMotion()
   const [currency, setCurrency] = useState<CurrencyCode>('USD')
 
-  const data = useMemo(() => monthlyCashflow(invoices, payments, currency, recentMonths(MONTHS)), [invoices, payments, currency])
+  const data = useMemo(() => monthlyCashflow(workspace, currency, recentMonths(MONTHS)), [workspace, currency])
   const ticks = useMemo(() => niceTicks(Math.max(...data.flatMap((d) => [d.invoiced, d.collected])), 4), [data])
   const totals = data.reduce((acc, d) => ({ invoiced: acc.invoiced + d.invoiced, collected: acc.collected + d.collected }), { invoiced: 0, collected: 0 })
 

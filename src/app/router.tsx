@@ -6,7 +6,7 @@ import { SectionPlaceholder } from '@/features/sections/SectionPlaceholder'
 
 /* Anticipated modules: routed now, implemented in later phases. */
 const upcomingModules = [
-  ...railNav.filter((m) => m.path !== ROUTES.dashboard),
+  ...railNav.filter((m) => m.path !== ROUTES.dashboard && m.path !== ROUTES.suppliers),
   settingsModule,
   {
     id: 'help',
@@ -48,6 +48,9 @@ export const router = createBrowserRouter([
       { path: 'ordenes-compra/:poId', lazy: () => import('@/features/commercial/PurchaseOrderPage').then((m) => ({ Component: m.PurchaseOrderPage })) },
       { path: 'tareas', lazy: () => import('@/features/tasks/TasksPage').then((m) => ({ Component: m.TasksPage })) },
       { path: 'finanzas', lazy: () => import('@/features/finance/FinancePage').then((m) => ({ Component: m.FinancePage })) },
+      { path: 'facturas/:invoiceId', lazy: () => import('@/features/finance/InvoicePage').then((m) => ({ Component: m.InvoicePage })) },
+      { path: 'proveedores', lazy: () => import('@/features/suppliers/SuppliersPage').then((m) => ({ Component: m.SuppliersPage })) },
+      { path: 'proveedores/:supplierId', lazy: () => import('@/features/suppliers/SupplierPage').then((m) => ({ Component: m.SupplierPage })) },
       ...upcomingModules,
       { path: '*', element: <NotFoundPage /> },
     ],

@@ -25,8 +25,9 @@ export type LoadIssue = 'corrupted' | 'outdated' | 'invalid' | 'migrated'
 
 const COLLECTIONS = [
   'staff', 'clients', 'suppliers', 'people', 'participants', 'projects', 'services', 'procedures',
-  'tasks', 'activity', 'documents', 'invoices', 'payables', 'payments', 'currencyIndicators', 'alerts',
+  'tasks', 'activity', 'documents', 'currencyIndicators', 'alerts',
   'priceEntries', 'quotations', 'purchaseOrders',
+  'legalEntities', 'invoices', 'receipts', 'collectionActions', 'agreements', 'costs', 'obligations', 'supplierPayments', 'exchangeRates', 'audit',
 ] as const
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -53,7 +54,26 @@ export function isValidDataset(x: unknown): x is Dataset {
     d.clients.every((c) => isObj(c) && str(c.id) && isObj(c.policy) && Array.isArray(c.contacts)) &&
     d.priceEntries.every((e) => clients.has(e.clientId) && str(e.serviceTypeId) && typeof e.unitPrice === 'number') &&
     d.quotations.every((q) => projects.has(q.projectId) && str(q.number) && Array.isArray(q.lines)) &&
-    d.purchaseOrders.every((po) => projects.has(po.projectId) && clients.has(po.clientId) && Array.isArray(po.allocations) && po.allocations.every((a) => services.has(a.serviceId)))
+    d.purchaseOrders.every((po) => projects.has(po.projectId) && clients.has(po.clientId) && Array.isArray(po.allocations) && po.allocations.every((a) => services.has(a.serviceId))) &&
+    validFinance(d, projects, clients)
+  )
+}
+
+const money = (x: unknown) => typeof x === 'number' && Number.isFinite(x)
+
+/** Financial records must reference existing records and carry numeric amounts. */
+function validFinance(d: Dataset, projects: Set<string>, clients: Set<string>): boolean {
+  const invoices = new Set(d.invoices.map((i) => i.id))
+  const suppliers = new Set(d.suppliers.map((s) => s.id))
+  const obligations = new Set(d.obligations.map((o) => o.id))
+  const costs = new Set(d.costs.map((c) => c.id))
+  return (
+    d.invoices.every((i) => str(i.id) && projects.has(i.projectId) && clients.has(i.clientId) && Array.isArray(i.lines) && Array.isArray(i.taxes) && i.lines.every((l) => money(l.unitPrice) && money(l.quantity))) &&
+    d.receipts.every((r) => clients.has(r.clientId) && money(r.amount) && Array.isArray(r.allocations) && r.allocations.every((a) => invoices.has(a.invoiceId) && money(a.amount))) &&
+    d.costs.every((c) => str(c.id) && money(c.amount) && (!c.projectId || projects.has(c.projectId))) &&
+    d.obligations.every((o) => suppliers.has(o.supplierId) && costs.has(o.costId) && money(o.amount) && (!o.projectId || projects.has(o.projectId))) &&
+    d.supplierPayments.every((p) => suppliers.has(p.supplierId) && money(p.amount) && Array.isArray(p.allocations) && p.allocations.every((a) => obligations.has(a.obligationId) && money(a.amount))) &&
+    d.suppliers.every((s) => str(s.id) && Array.isArray(s.categories))
   )
 }
 

@@ -1,4 +1,5 @@
-import type { CurrencyIndicator, Invoice, Payment, SupplierPayable } from '@/types/domain'
+import type { CurrencyIndicator } from '@/types/domain'
+import type { LegacyInvoice, LegacyPayable, LegacyPayment } from './seedTypes'
 
 /*
  * Fictional financial records — demo data only. Every KPI, chart and balance
@@ -6,7 +7,7 @@ import type { CurrencyIndicator, Invoice, Payment, SupplierPayable } from '@/typ
  * No tax or exchange-rate logic is applied.
  */
 
-export const mockInvoices: Invoice[] = [
+export const mockInvoices: LegacyInvoice[] = [
   // USD
   { id: 'inv_01', number: 'FA-0001-00001812', clientId: 'cli_nordvik', projectId: 'prj_0143', issueDate: '2026-04-20', dueDate: '2026-06-04', currency: 'USD', amount: 9300, collected: 9300, status: 'paid' },
   { id: 'inv_02', number: 'FA-0001-00001820', clientId: 'cli_lumen', projectId: 'prj_0139', issueDate: '2026-05-28', dueDate: '2026-06-27', currency: 'USD', amount: 11400, collected: 11400, status: 'paid' },
@@ -33,7 +34,7 @@ export const mockInvoices: Invoice[] = [
   { id: 'inv_21', number: 'FA-0001-00001854', clientId: 'cli_pampa', projectId: 'prj_0154', issueDate: '2026-10-09', dueDate: '2026-11-08', currency: 'ARS', amount: 8600000, collected: 0, status: 'issued' },
 ]
 
-export const mockPayables: SupplierPayable[] = [
+export const mockPayables: LegacyPayable[] = [
   { id: 'pay_01', reference: 'PRV-AT-7741', supplierId: 'sup_01', projectId: 'prj_0158', serviceId: 'prj_0158_s4', issueDate: '2026-10-05', dueDate: '2026-10-24', currency: 'USD', amount: 4600, paid: 0, status: 'scheduled' },
   { id: 'pay_02', reference: 'PRV-CN-0388', supplierId: 'sup_02', projectId: 'prj_0158', serviceId: 'prj_0158_s2', issueDate: '2026-10-10', dueDate: '2026-11-05', currency: 'USD', amount: 2600, paid: 0, status: 'pending-approval' },
   { id: 'pay_03', reference: 'PRV-MR-2210', supplierId: 'sup_04', projectId: 'prj_0155', serviceId: 'prj_0155_s2', issueDate: '2026-09-10', dueDate: '2026-09-30', currency: 'USD', amount: 2900, paid: 2900, status: 'paid' },
@@ -53,7 +54,7 @@ export const mockPayables: SupplierPayable[] = [
   { id: 'pay_17', reference: 'PRV-CN-0371', supplierId: 'sup_02', projectId: 'prj_0154', serviceId: 'prj_0154_s2', issueDate: '2026-09-20', dueDate: '2026-10-05', currency: 'ARS', amount: 2200000, paid: 2200000, status: 'paid' },
 ]
 
-export const mockPayments: Payment[] = [
+export const mockPayments: LegacyPayment[] = [
   // Incoming — client collections
   { id: 'pin_01', direction: 'incoming', date: '2026-05-20', documentId: 'inv_01', counterparty: 'Nordvik Energy', method: 'wire', currency: 'USD', amount: 9300 },
   { id: 'pin_02', direction: 'incoming', date: '2026-06-18', documentId: 'inv_02', counterparty: 'Lumen Fintech', method: 'transfer', currency: 'USD', amount: 11400 },

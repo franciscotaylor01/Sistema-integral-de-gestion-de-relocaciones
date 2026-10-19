@@ -1,5 +1,5 @@
 import { projectFamily, type Workspace } from '@/hooks/useWorkspace'
-import type { ActivityEvent, Client, Invoice, Person, Project, ProjectDocument, ProjectParticipant, StaffMember, SupplierPayable, Task } from '@/types/domain'
+import type { ActivityEvent, Client, Invoice, Person, Project, ProjectDocument, ProjectParticipant, StaffMember, SupplierObligation, Task } from '@/types/domain'
 
 /** Everything the project detail tabs need, resolved once per render. */
 export interface ProjectContext {
@@ -11,7 +11,7 @@ export interface ProjectContext {
   documents: ProjectDocument[]
   activity: ActivityEvent[]
   invoices: Invoice[]
-  payables: SupplierPayable[]
+  obligations: SupplierObligation[]
   tasks: Task[]
   workspace: Workspace
 }
@@ -27,7 +27,7 @@ export function buildProjectContext(workspace: Workspace, project: Project): Pro
     documents: workspace.documents.filter((d) => d.projectId === project.id),
     activity: workspace.activity.filter((a) => a.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date)),
     invoices: workspace.invoices.filter((i) => i.projectId === project.id),
-    payables: workspace.payables.filter((p) => p.projectId === project.id),
+    obligations: workspace.obligations.filter((o) => o.projectId === project.id),
     tasks: workspace.tasks.filter((t) => t.projectId === project.id),
   }
 }

@@ -1,4 +1,4 @@
-import type { Client, CommercialPolicy, CountryCode, PriceEntry, PriceList, ProjectFinancialStatus, QuotationStatus, ProjectOperationalStatus, ProjectRecord, ServiceStatus, TaskStatus } from '@/types/domain'
+import type { Client, CommercialPolicy, CountryCode, CurrencyCode, PriceEntry, PriceList, ProjectFinancialStatus, QuotationStatus, ProjectOperationalStatus, ProjectRecord, ServiceStatus, TaskStatus } from '@/types/domain'
 
 /*
  * Compact shapes used to author the demo seed. `data/seed.ts` turns them into
@@ -113,4 +113,51 @@ export interface PurchaseOrderSeed {
   /** Allocations by service id. */
   allocations: Record<string, number>
   documentLabel?: string
+}
+
+/* Phase 1 flat finance shapes — kept to author seeds and migrate stored v3 data. */
+
+export interface LegacySupplier {
+  id: string
+  name: string
+  category: string
+  country: CountryCode
+}
+
+export interface LegacyInvoice {
+  id: string
+  number: string
+  clientId: string
+  projectId: string
+  issueDate: string
+  dueDate: string
+  currency: CurrencyCode
+  amount: number
+  collected: number
+  status: 'draft' | 'issued' | 'partially-paid' | 'paid' | 'overdue'
+}
+
+export interface LegacyPayable {
+  id: string
+  reference: string
+  supplierId: string
+  projectId: string
+  serviceId?: string
+  issueDate: string
+  dueDate: string
+  currency: CurrencyCode
+  amount: number
+  paid: number
+  status: 'scheduled' | 'pending-approval' | 'partially-paid' | 'paid' | 'overdue'
+}
+
+export interface LegacyPayment {
+  id: string
+  direction: 'incoming' | 'outgoing'
+  date: string
+  documentId: string
+  counterparty: string
+  method: 'transfer' | 'wire' | 'check' | 'card'
+  currency: CurrencyCode
+  amount: number
 }

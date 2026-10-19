@@ -1,10 +1,18 @@
 import type {
+  AuditEvent,
+  CollectionAction,
+  CostRecord,
+  CustomerReceipt,
+  ExchangeRate,
+  LegalEntity,
+  SupplierAgreement,
+  SupplierObligation,
+  SupplierPayment,
   ActivityEvent,
   Alert,
   Client,
   CurrencyIndicator,
   Invoice,
-  Payment,
   PriceEntry,
   PurchaseOrder,
   Quotation,
@@ -16,12 +24,11 @@ import type {
   ServiceRecord,
   StaffMember,
   Supplier,
-  SupplierPayable,
   Task,
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 3
+export const SCHEMA_VERSION = 4
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -37,9 +44,17 @@ export interface Dataset {
   tasks: Task[]
   activity: ActivityEvent[]
   documents: ProjectDocument[]
+  /** Phase 4 — financial management. */
+  legalEntities: LegalEntity[]
   invoices: Invoice[]
-  payables: SupplierPayable[]
-  payments: Payment[]
+  receipts: CustomerReceipt[]
+  collectionActions: CollectionAction[]
+  agreements: SupplierAgreement[]
+  costs: CostRecord[]
+  obligations: SupplierObligation[]
+  supplierPayments: SupplierPayment[]
+  exchangeRates: ExchangeRate[]
+  audit: AuditEvent[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

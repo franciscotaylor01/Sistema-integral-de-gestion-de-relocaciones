@@ -14,11 +14,12 @@ import { StatTile } from '@/components/ui/StatTile'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
 import { billingMilestoneLabel, commercialStageMeta } from '@/config/commercial'
-import { clientPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
+import { clientPath, invoicePath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { hasAmount, sumAmounts, type Amounts } from '@/domain/commercial/money'
 import { projectCommercial, type ServiceCommercial } from '@/domain/commercial/traceability'
 import { DomainError } from '@/domain/errors'
+import { billedByService } from '@/domain/finance/invoices'
 import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/columns'
 import { PurchaseOrderModal } from '@/features/commercial/PurchaseOrderModal'
 import { useActions } from '@/hooks/useActions'
@@ -45,6 +46,7 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
   const [busy, setBusy] = useState(false)
 
   const commercial = useMemo(() => projectCommercial(ws.dataset, project, DEMO_TODAY), [ws.dataset, project])
+  const billed = useMemo(() => billedByService(ws.dataset, project.id), [ws.dataset, project.id])
   const rows = [...commercial.values()]
   const total = (pick: (s: ServiceCommercial) => Amounts) => sumAmounts(...rows.map(pick))
   const cur = project.currency
@@ -119,7 +121,7 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
           caption="Estado comercial de los servicios"
           rows={project.services}
           getRowId={(s) => s.id}
-          minWidth={1180}
+          minWidth={1320}
           columns={[
             {
               id: 'service',
@@ -164,12 +166,19 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
               },
             },
             {
+              id: 'billed',
+              header: 'Facturado',
+              width: '10%',
+              cell: (s) => <AmountsText amounts={billed.get(s.id) ?? {}} />,
+            },
+            {
               id: 'refs',
               header: 'Referencias',
               width: '13%',
               cell: (s) => {
                 const c = commercial.get(s.id)!
-                if (!c.quotations.length && !c.purchaseOrders.length) return <span className="text-muted">—</span>
+                const invoices = ws.invoices.filter((i) => i.projectId === project.id && i.lifecycle !== 'cancelled' && i.lines.some((l) => l.serviceId === s.id))
+                if (!c.quotations.length && !c.purchaseOrders.length && !invoices.length) return <span className="text-muted">—</span>
                 return (
                   <span className="flex flex-col text-[12.5px]">
                     {latestVersions(c.quotations).map((q) => (
@@ -180,6 +189,12 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
                     {c.purchaseOrders.map((p) => (
                       <Link key={p.id} to={purchaseOrderPath(p.id)} className={`tabular truncate text-ink-secondary ${link}`}>
                         OC {p.clientPoNumber}
+                      </Link>
+                    ))}
+                    {invoices.map((i) => (
+                      <Link key={i.id} to={invoicePath(i.id)} className={`tabular truncate text-ink-secondary ${link}`}>
+                        {i.number}
+                        {i.lifecycle === 'draft' && ' (borrador)'}
                       </Link>
                     ))}
                   </span>

@@ -1,4 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { DEMO_TODAY } from '@/config/brand'
+import { invoiceFinancials, obligationFinancials, type InvoiceFinancials, type ObligationFinancials } from '@/domain/finance/derive'
 import type { Dataset } from '@/domain/dataset'
 import { workspaceStore } from '@/services/workspaceStore'
 import type {
@@ -6,8 +8,16 @@ import type {
   Alert,
   Client,
   CurrencyIndicator,
+  AuditEvent,
+  CollectionAction,
+  CostRecord,
+  CustomerReceipt,
+  ExchangeRate,
   Invoice,
-  Payment,
+  LegalEntity,
+  SupplierAgreement,
+  SupplierObligation,
+  SupplierPayment,
   Person,
   PriceEntry,
   PurchaseOrder,
@@ -19,7 +29,6 @@ import type {
   ProjectService,
   StaffMember,
   Supplier,
-  SupplierPayable,
   Task,
 } from '@/types/domain'
 
@@ -37,9 +46,21 @@ export interface Workspace {
   suppliers: Supplier[]
   documents: ProjectDocument[]
   activity: ActivityEvent[]
+  legalEntities: LegalEntity[]
   invoices: Invoice[]
-  payables: SupplierPayable[]
-  payments: Payment[]
+  receipts: CustomerReceipt[]
+  collectionActions: CollectionAction[]
+  agreements: SupplierAgreement[]
+  costs: CostRecord[]
+  obligations: SupplierObligation[]
+  supplierPayments: SupplierPayment[]
+  exchangeRates: ExchangeRate[]
+  audit: AuditEvent[]
+  /** Derived financial views (as of the demo "today"). */
+  invoiceFin: Map<string, InvoiceFinancials>
+  obligationFin: Map<string, ObligationFinancials>
+  invoiceById: Map<string, Invoice>
+  obligationById: Map<string, SupplierObligation>
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   priceEntries: PriceEntry[]
@@ -94,9 +115,20 @@ export function deriveWorkspace(ds: Dataset): Workspace {
     suppliers: ds.suppliers,
     documents: ds.documents,
     activity: ds.activity,
+    legalEntities: ds.legalEntities,
     invoices: ds.invoices,
-    payables: ds.payables,
-    payments: ds.payments,
+    receipts: ds.receipts,
+    collectionActions: ds.collectionActions,
+    agreements: ds.agreements,
+    costs: ds.costs,
+    obligations: ds.obligations,
+    supplierPayments: ds.supplierPayments,
+    exchangeRates: ds.exchangeRates,
+    audit: ds.audit,
+    invoiceFin: new Map(ds.invoices.map((i) => [i.id, invoiceFinancials(ds, i, DEMO_TODAY)])),
+    obligationFin: new Map(ds.obligations.map((o) => [o.id, obligationFinancials(ds, o, DEMO_TODAY)])),
+    invoiceById: byId(ds.invoices),
+    obligationById: byId(ds.obligations),
     currencyIndicators: ds.currencyIndicators,
     alerts: ds.alerts,
     priceEntries: ds.priceEntries,

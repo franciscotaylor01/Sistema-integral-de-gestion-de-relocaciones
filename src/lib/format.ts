@@ -24,6 +24,11 @@ export function formatCurrency(value: number, currency: CurrencyCode, options: {
   }).format(value)
 }
 
+/** Exact amount: cents shown only when present ("ARS 1.250.000", "USD 349,99"). */
+export function formatMoney(value: number, currency: CurrencyCode): string {
+  return formatCurrency(value, currency, { decimals: Number.isInteger(value) ? 0 : 2 })
+}
+
 /** "USD 77,4 mil", "ARS 19,4 M" — for KPI tiles and chart axes. */
 export function formatCompactCurrency(value: number, currency: CurrencyCode): string {
   return numberFormat(`cc:${currency}`, {

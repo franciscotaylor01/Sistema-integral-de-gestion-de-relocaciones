@@ -3,6 +3,13 @@ import type { ClientInput } from '@/domain/commercial/clients'
 import type { PriceEntryInput } from '@/domain/commercial/pricing'
 import type { PurchaseOrderInput } from '@/domain/commercial/purchaseOrders'
 import type { ApprovalInput, QuotationDraftInput } from '@/domain/commercial/quotations'
+import type { CostInput } from '@/domain/finance/costs'
+import type { ExchangeRateInput } from '@/domain/finance/fx'
+import type { InvoiceInput } from '@/domain/finance/invoices'
+import type { ObligationInput, ObligationTermsPatch } from '@/domain/finance/obligations'
+import type { AllocationInput, CollectionActionInput, ReceiptInput } from '@/domain/finance/receipts'
+import type { SupplierAllocationInput, SupplierPaymentInput } from '@/domain/finance/supplierPayments'
+import type { AgreementInput, SupplierInput } from '@/domain/finance/suppliers'
 import type { NewProcedureInput, ProcedurePatch } from '@/domain/procedures'
 import type { NewProjectInput, ProjectPatch } from '@/domain/projects'
 import type { NewServiceInput, ServicePatch } from '@/domain/services'
@@ -59,6 +66,30 @@ export interface SigrDataSource {
   updatePurchaseOrder(poId: string, input: PurchaseOrderInput): Promise<CommandResult>
   cancelPurchaseOrder(poId: string, reason: string): Promise<CommandResult>
   linkPurchaseOrderDocument(poId: string, label: string): Promise<CommandResult>
+
+  // Phase 4 — financial management
+  createInvoiceDraft(input: InvoiceInput, requestId: string): Promise<CommandResult<{ invoiceId: string; duplicate: boolean }>>
+  updateInvoiceDraft(invoiceId: string, input: InvoiceInput): Promise<CommandResult>
+  issueInvoice(invoiceId: string, externalRef?: string): Promise<CommandResult>
+  cancelInvoice(invoiceId: string, reason: string): Promise<CommandResult>
+  recordReceipt(input: ReceiptInput, requestId: string): Promise<CommandResult<{ receiptId: string; duplicate: boolean }>>
+  applyReceiptCredit(receiptId: string, allocations: AllocationInput[]): Promise<CommandResult>
+  reverseReceipt(receiptId: string, reason: string): Promise<CommandResult>
+  addCollectionAction(input: CollectionActionInput): Promise<CommandResult>
+  createSupplier(input: SupplierInput, requestId: string): Promise<CommandResult<{ supplierId: string; duplicate: boolean }>>
+  updateSupplier(supplierId: string, input: SupplierInput): Promise<CommandResult>
+  createAgreement(input: AgreementInput): Promise<CommandResult<{ agreementId: string }>>
+  recordCost(input: CostInput): Promise<CommandResult<{ costId: string }>>
+  voidCost(costId: string, reason: string): Promise<CommandResult>
+  createObligation(input: ObligationInput, requestId: string): Promise<CommandResult<{ obligationId: string; duplicate: boolean }>>
+  approveObligation(obligationId: string): Promise<CommandResult>
+  updateObligationTerms(obligationId: string, patch: ObligationTermsPatch): Promise<CommandResult>
+  cancelObligation(obligationId: string, reason: string): Promise<CommandResult>
+  recordSupplierPayment(input: SupplierPaymentInput, requestId: string): Promise<CommandResult<{ paymentId: string; duplicate: boolean }>>
+  applySupplierAdvance(paymentId: string, allocations: SupplierAllocationInput[]): Promise<CommandResult>
+  reverseSupplierPayment(paymentId: string, reason: string): Promise<CommandResult>
+  recordExchangeRate(input: ExchangeRateInput): Promise<CommandResult<{ rateId: string }>>
+  correctExchangeRate(rateId: string, rate: string, reason: string): Promise<CommandResult<{ rateId: string }>>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

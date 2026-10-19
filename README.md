@@ -35,14 +35,27 @@ npm run dev        # http://localhost:5173
 | `/`                      | Dashboard: rentabilidad, KPIs, facturación vs. cobranzas, vencimientos, proyectos recientes, alertas, pagos a proveedores |
 | `/proyectos`             | Listado con búsqueda y filtros (en la URL)                                |
 | `/proyectos/nuevo`       | Alta de proyecto en 4 pasos (cliente y beneficiario, traslado, servicios, revisión) |
-| `/proyectos/:id`         | Detalle: Resumen, Servicios, Operaciones y Actividad funcionales; Finanzas y Documentos como vista previa |
+| `/proyectos/:id`         | Detalle: Resumen, Servicios, Operaciones, Finanzas (comercial, resultado, facturas, cobros, costos, obligaciones, pagos) y Actividad; Documentos como vista previa |
 | `/tareas`                | Mis tareas: próximas, vencidas, esperando a terceros y completadas |
 | `/clientes`, `/clientes/:id` | Clientes corporativos: empresa, contactos, proyectos, tarifario, facturas, saldos |
 | `/operaciones`           | Tablero/lista de servicios, trámites migratorios, vencimientos de documentos |
-| `/finanzas`              | Posición por moneda, facturas, cuentas por cobrar, proveedores, pagos, costos por proyecto |
-| `/calendario`, `/proveedores`, `/documentos`, `/reportes`, `/configuracion` | Módulos anticipados ("Próximamente") |
+| `/finanzas`              | Resumen, Facturas, Cuentas por cobrar, Proveedores, Cobros y pagos, Costos y gastos, Resultados por proyecto, y las vistas comerciales de Fase 3 |
+| `/facturas/:id`          | Factura: edición del borrador, emisión (registro interno), anulación, cobros y gestiones de cobranza |
+| `/proveedores`, `/proveedores/:id` | Proveedores: datos, acuerdos por servicio, obligaciones, pagos y saldos por moneda |
+| `/calendario`, `/documentos`, `/reportes`, `/configuracion` | Módulos anticipados ("Próximamente") |
 
 Búsqueda global con <kbd>⌘K</kbd> / <kbd>Ctrl K</kbd>. "Mis tareas" y "Restablecer datos de demo" están en el menú de usuario.
+
+## Fase 4 — gestión financiera
+
+- **Facturas:** ID estable, número interno (`FC-AAAA-NNNN`), entidad emisora, cliente, proyecto, fechas, moneda, tipo, líneas vinculadas a servicio/cotización/OC, impuestos cargados por el usuario (SIGR no los determina), notas y referencia externa. Ciclo de vida borrador → emitida → anulada; *cobro parcial*, *cobrada* y *vencida* se derivan de los cobros. Se impide facturar por encima de lo facturable por servicio (política del cliente, aprobación, OC, hito) y facturar dos veces lo mismo. **Emitir es solo un registro interno de demo:** no es un comprobante fiscal, no hay CAE ni integración con ARCA.
+- **Cuentas por cobrar:** cobros aplicables a varias facturas del mismo cliente y moneda, parciales o múltiples. No se puede aplicar más que el saldo; el excedente queda como saldo a favor explícito, aplicable después. Antigüedad de saldos, días de atraso y gestiones de cobranza. Las reversiones conservan el historial.
+- **Proveedores y costos:** proveedores (empresa o profesional) con país, contacto, moneda preferida, categorías, datos de pago (placeholder), estado y notas. Costos reales imputables a proyecto, servicio, proveedor y categoría; los gastos generales de la empresa van aparte. El costo estimado (planificación) se distingue del costo real.
+- **Obligaciones y pagos a proveedores:** cada obligación tiene ID, comprobante, fechas, condición de pago y estado; registrarla genera su costo. Pagos totales o parciales, sin sobrepago (el excedente es un anticipo explícito), con reversión que conserva el historial.
+- **Florencia:** modelada como profesional independiente que factura a la empresa, con acuerdos por servicio, sus comprobantes, pagado acumulado y pendiente, vinculados a proyectos. "Pagar después del cobro al cliente" es configurable por acuerdo/obligación; pagar antes exige un motivo explícito. No hay motor de reparto de ganancias y sus pagos no son distribuciones societarias.
+- **Multimoneda:** nunca se suman monedas distintas. Los tipos de cambio se registran con fuente y fecha; los ajustes crean un registro nuevo que reemplaza al anterior (historial completo) y no se aplican conversiones. Aritmética en centavos enteros (`src/domain/finance/money.ts`).
+- **Resultados por proyecto:** por moneda: acordado, facturado (neto y total), cobrado, por cobrar, costo estimado, costo real, obligaciones, pagado e impago. El margen operativo (facturado neto − costo real directo, antes de impuestos y gastos generales) se separa de la caja; si faltan bases se muestra "Sin datos suficientes".
+- **Migración:** `schemaVersion 4`. Las facturas, cuentas a pagar y pagos de fases anteriores se convierten preservando exactamente los importes cobrados y pagados (`src/data/legacyFinance.ts`).
 
 ## Fase 3 — gestión comercial
 

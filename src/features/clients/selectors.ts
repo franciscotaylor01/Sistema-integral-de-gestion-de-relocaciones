@@ -1,5 +1,5 @@
 import { isActiveProject } from '@/features/projects/selectors'
-import { invoiceOutstanding } from '@/features/finance/selectors'
+import { outstandingOf } from '@/features/finance/selectors'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { sumByCurrency, type MoneyByCurrency } from '@/lib/money'
 import type { Client } from '@/types/domain'
@@ -19,7 +19,7 @@ export function summarizeClient(ws: Workspace, client: Client): ClientSummary {
     client,
     activeProjects: projects.filter(isActiveProject).length,
     totalProjects: projects.length,
-    receivable: sumByCurrency(invoices.filter((i) => invoiceOutstanding(i) > 0), (i) => i.currency, invoiceOutstanding),
-    overdue: invoices.filter((i) => i.status === 'overdue').length,
+    receivable: sumByCurrency(invoices.filter((i) => outstandingOf(ws, i) > 0), (i) => i.currency, (i) => outstandingOf(ws, i)),
+    overdue: invoices.filter((i) => ws.invoiceFin.get(i.id)?.overdue).length,
   }
 }

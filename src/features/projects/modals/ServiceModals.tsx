@@ -14,7 +14,7 @@ import { referencePrice } from '../pricing'
 
 function SupplierSelect({ ws, typeId, value, onChange, error }: { ws: Workspace; typeId: string; value: string; onChange: (v: string) => void; error?: string }) {
   const suppliers = useMemo(() => {
-    const matching = ws.suppliers.filter((s) => s.category === typeId)
+    const matching = ws.suppliers.filter((s) => s.categories.includes(typeId))
     return matching.length ? matching : ws.suppliers
   }, [ws.suppliers, typeId])
   return (

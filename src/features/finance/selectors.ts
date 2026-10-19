@@ -1,19 +1,32 @@
 import { DEMO_TODAY } from '@/config/brand'
-import { monthKey, monthLabel } from '@/lib/dates'
-import { sumByCurrency, type MoneyByCurrency } from '@/lib/money'
-import type { CurrencyCode, Invoice, Payment, SupplierPayable } from '@/types/domain'
+import { addMoney, cmpMoney } from '@/domain/finance/money'
+import type { Workspace } from '@/hooks/useWorkspace'
+import { daysUntil, monthKey, monthLabel } from '@/lib/dates'
+import type { MoneyByCurrency } from '@/lib/money'
+import type { CurrencyCode, Invoice, SupplierObligation } from '@/types/domain'
 
-/** Drafts are not part of the receivables ledger. */
-export const billedInvoices = (invoices: Invoice[]) => invoices.filter((i) => i.status !== 'draft')
+/*
+ * Read-side aggregates for finance screens. Every figure is derived from the
+ * Phase 4 records through the workspace's precomputed views (invoiceFin,
+ * obligationFin) — nothing is read from stored totals.
+ */
 
-export const invoiceOutstanding = (i: Invoice) => (i.status === 'draft' ? 0 : i.amount - i.collected)
-export const payableOutstanding = (p: SupplierPayable) => p.amount - p.paid
+const add = (m: MoneyByCurrency, c: CurrencyCode, v: number) => {
+  m[c] = addMoney(m[c] ?? 0, v)
+}
+
+/** Issued invoices (drafts and cancelled ones are not part of receivables). */
+export const issuedInvoices = (invoices: Invoice[]) => invoices.filter((i) => i.lifecycle === 'issued')
+
+export const outstandingOf = (ws: Workspace, i: Invoice) => ws.invoiceFin.get(i.id)?.outstanding ?? 0
+export const obligationOutstanding = (ws: Workspace, o: SupplierObligation) => ws.obligationFin.get(o.id)?.outstanding ?? 0
 
 export interface LedgerSummary {
   invoiced: MoneyByCurrency
   collected: MoneyByCurrency
   receivable: MoneyByCurrency
   overdueReceivable: MoneyByCurrency
+  /** Supplier obligations (amount owed, not yet necessarily paid). */
   supplierCosts: MoneyByCurrency
   supplierPaid: MoneyByCurrency
   payable: MoneyByCurrency
@@ -22,23 +35,31 @@ export interface LedgerSummary {
   openPayables: number
 }
 
-export function summarizeLedger(invoices: Invoice[], payables: SupplierPayable[]): LedgerSummary {
-  const billed = billedInvoices(invoices)
-  const open = billed.filter((i) => invoiceOutstanding(i) > 0)
-  const overdue = billed.filter((i) => i.status === 'overdue')
-  const openPayables = payables.filter((p) => payableOutstanding(p) > 0)
-  return {
-    invoiced: sumByCurrency(billed, (i) => i.currency, (i) => i.amount),
-    collected: sumByCurrency(billed, (i) => i.currency, (i) => i.collected),
-    receivable: sumByCurrency(open, (i) => i.currency, invoiceOutstanding),
-    overdueReceivable: sumByCurrency(overdue, (i) => i.currency, invoiceOutstanding),
-    supplierCosts: sumByCurrency(payables, (p) => p.currency, (p) => p.amount),
-    supplierPaid: sumByCurrency(payables, (p) => p.currency, (p) => p.paid),
-    payable: sumByCurrency(openPayables, (p) => p.currency, payableOutstanding),
-    openInvoices: open.length,
-    overdueInvoices: overdue.length,
-    openPayables: openPayables.length,
+export function summarizeLedger(ws: Workspace, invoices: Invoice[] = ws.invoices, obligations: SupplierObligation[] = ws.obligations): LedgerSummary {
+  const s: LedgerSummary = { invoiced: {}, collected: {}, receivable: {}, overdueReceivable: {}, supplierCosts: {}, supplierPaid: {}, payable: {}, openInvoices: 0, overdueInvoices: 0, openPayables: 0 }
+  for (const inv of issuedInvoices(invoices)) {
+    const f = ws.invoiceFin.get(inv.id)!
+    add(s.invoiced, inv.currency, f.total)
+    add(s.collected, inv.currency, f.paid)
+    if (cmpMoney(f.outstanding, 0) > 0) {
+      add(s.receivable, inv.currency, f.outstanding)
+      s.openInvoices++
+    }
+    if (f.overdue) {
+      add(s.overdueReceivable, inv.currency, f.outstanding)
+      s.overdueInvoices++
+    }
   }
+  for (const ob of obligations.filter((o) => o.lifecycle !== 'cancelled')) {
+    const f = ws.obligationFin.get(ob.id)!
+    add(s.supplierCosts, ob.currency, ob.amount)
+    add(s.supplierPaid, ob.currency, f.paid)
+    if (cmpMoney(f.outstanding, 0) > 0) {
+      add(s.payable, ob.currency, f.outstanding)
+      s.openPayables++
+    }
+  }
+  return s
 }
 
 export interface CashflowPoint {
@@ -57,18 +78,18 @@ export function recentMonths(count: number): string[] {
   })
 }
 
-/** Monthly invoiced (by issue date) and collected (by payment date) in one currency. */
-export function monthlyCashflow(invoices: Invoice[], payments: Payment[], currency: CurrencyCode, months: string[]): CashflowPoint[] {
-  return months.map((key) => ({
-    key,
-    month: monthLabel(key),
-    invoiced: billedInvoices(invoices)
-      .filter((i) => i.currency === currency && monthKey(i.issueDate) === key)
-      .reduce((s, i) => s + i.amount, 0),
-    collected: payments
-      .filter((p) => p.direction === 'incoming' && p.currency === currency && monthKey(p.date) === key)
-      .reduce((s, p) => s + p.amount, 0),
-  }))
+/** Monthly invoiced (issued totals by issue date) and collected (receipt allocations by date) in one currency. */
+export function monthlyCashflow(ws: Workspace, currency: CurrencyCode, months: string[]): CashflowPoint[] {
+  const invoiced = new Map<string, number>()
+  const collected = new Map<string, number>()
+  for (const inv of issuedInvoices(ws.invoices).filter((i) => i.currency === currency)) {
+    const k = monthKey(inv.issueDate)
+    invoiced.set(k, addMoney(invoiced.get(k) ?? 0, ws.invoiceFin.get(inv.id)!.total))
+  }
+  for (const r of ws.receipts.filter((x) => x.status === 'recorded' && x.currency === currency)) {
+    for (const a of r.allocations) collected.set(monthKey(a.date), addMoney(collected.get(monthKey(a.date)) ?? 0, a.amount))
+  }
+  return months.map((key) => ({ key, month: monthLabel(key), invoiced: invoiced.get(key) ?? 0, collected: collected.get(key) ?? 0 }))
 }
 
 export interface AgingBucket {
@@ -78,17 +99,31 @@ export interface AgingBucket {
   amounts: MoneyByCurrency
 }
 
-/** Receivables aging by days past due (relative to the demo "today"). */
-export function receivablesAging(invoices: Invoice[], daysPastDue: (iso: string) => number): AgingBucket[] {
-  const open = billedInvoices(invoices).filter((i) => invoiceOutstanding(i) > 0)
-  const buckets: { id: AgingBucket['id']; label: string; test: (d: number) => boolean }[] = [
-    { id: 'current', label: 'Al día', test: (d) => d <= 0 },
-    { id: 'd30', label: '1–30 días', test: (d) => d > 0 && d <= 30 },
-    { id: 'd60', label: '31–60 días', test: (d) => d > 30 && d <= 60 },
-    { id: 'd60plus', label: 'Más de 60 días', test: (d) => d > 60 },
+/** Open receivables by days past due. */
+export function receivablesAging(ws: Workspace, invoices: Invoice[] = ws.invoices): AgingBucket[] {
+  const buckets: (AgingBucket & { test: (d: number) => boolean })[] = [
+    { id: 'current', label: 'Al día', count: 0, amounts: {}, test: (d) => d <= 0 },
+    { id: 'd30', label: '1–30 días', count: 0, amounts: {}, test: (d) => d > 0 && d <= 30 },
+    { id: 'd60', label: '31–60 días', count: 0, amounts: {}, test: (d) => d > 30 && d <= 60 },
+    { id: 'd60plus', label: 'Más de 60 días', count: 0, amounts: {}, test: (d) => d > 60 },
   ]
-  return buckets.map((b) => {
-    const items = open.filter((i) => b.test(daysPastDue(i.dueDate)))
-    return { id: b.id, label: b.label, count: items.length, amounts: sumByCurrency(items, (i) => i.currency, invoiceOutstanding) }
-  })
+  for (const inv of issuedInvoices(invoices)) {
+    const out = outstandingOf(ws, inv)
+    if (cmpMoney(out, 0) <= 0) continue
+    const b = buckets.find((x) => x.test(-daysUntil(inv.dueDate)))!
+    b.count++
+    add(b.amounts, inv.currency, out)
+  }
+  return buckets.map(({ test: _t, ...b }) => b)
+}
+
+/** Outstanding owed to one supplier, per currency (active obligations only). */
+export function supplierBalances(ws: Workspace, supplierId: string): MoneyByCurrency {
+  const out: MoneyByCurrency = {}
+  for (const o of ws.obligations) {
+    if (o.supplierId !== supplierId || o.lifecycle === 'cancelled') continue
+    const v = obligationOutstanding(ws, o)
+    if (cmpMoney(v, 0) > 0) add(out, o.currency, v)
+  }
+  return out
 }
