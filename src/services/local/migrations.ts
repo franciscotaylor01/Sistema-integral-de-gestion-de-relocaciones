@@ -1,4 +1,4 @@
-import { buildCommercialSeed, buildFinanceSeed, withCommercial } from '@/data/seed'
+import { buildCommercialSeed, buildFinanceSeed, buildSettlementSeed, withCommercial } from '@/data/seed'
 import type { LegacyInvoice, LegacyPayable, LegacyPayment, LegacySupplier } from '@/data/mock/seedTypes'
 import { priceListsToEntries } from '@/domain/commercial/legacy'
 import type { Dataset } from '@/domain/dataset'
@@ -51,9 +51,15 @@ function v3ToV4(data: V3Dataset): Dataset {
   return { ...rest, alerts, schemaVersion: 4, ...finance }
 }
 
+/** v4 → v5: adds Eugenia–Florencia settlements (demo rules), keeping every existing record. */
+function v4ToV5(data: Omit<Dataset, 'settlements'> & { settlements?: Dataset['settlements'] }): Dataset {
+  return { ...data, schemaVersion: 5, settlements: data.settlements ?? buildSettlementSeed(data.projects, data.obligations ?? []) }
+}
+
 const steps: Record<number, (data: never) => unknown> = {
   2: v2ToV3 as (data: never) => unknown,
   3: v3ToV4 as (data: never) => unknown,
+  4: v4ToV5 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

@@ -13,6 +13,7 @@ import type {
   CostRecord,
   CustomerReceipt,
   ExchangeRate,
+  ProjectSettlement,
   Invoice,
   LegalEntity,
   SupplierAgreement,
@@ -55,6 +56,7 @@ export interface Workspace {
   obligations: SupplierObligation[]
   supplierPayments: SupplierPayment[]
   exchangeRates: ExchangeRate[]
+  settlements: ProjectSettlement[]
   audit: AuditEvent[]
   /** Derived financial views (as of the demo "today"). */
   invoiceFin: Map<string, InvoiceFinancials>
@@ -124,6 +126,7 @@ export function deriveWorkspace(ds: Dataset): Workspace {
     obligations: ds.obligations,
     supplierPayments: ds.supplierPayments,
     exchangeRates: ds.exchangeRates,
+    settlements: ds.settlements,
     audit: ds.audit,
     invoiceFin: new Map(ds.invoices.map((i) => [i.id, invoiceFinancials(ds, i, DEMO_TODAY)])),
     obligationFin: new Map(ds.obligations.map((o) => [o.id, obligationFinancials(ds, o, DEMO_TODAY)])),

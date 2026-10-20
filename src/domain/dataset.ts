@@ -4,6 +4,7 @@ import type {
   CostRecord,
   CustomerReceipt,
   ExchangeRate,
+  ProjectSettlement,
   LegalEntity,
   SupplierAgreement,
   SupplierObligation,
@@ -28,7 +29,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 4
+export const SCHEMA_VERSION = 5
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -55,6 +56,8 @@ export interface Dataset {
   supplierPayments: SupplierPayment[]
   exchangeRates: ExchangeRate[]
   audit: AuditEvent[]
+  /** Phase 4.5 — Eugenia–Florencia settlements. */
+  settlements: ProjectSettlement[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

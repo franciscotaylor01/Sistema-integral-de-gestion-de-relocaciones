@@ -11,6 +11,12 @@ import { ServiceChip } from '@/components/ui/ServiceChip'
 import { DEMO_TODAY } from '@/config/brand'
 import { getServiceType } from '@/config/serviceCatalog'
 import { projectResults } from '@/domain/finance/results'
+import { settlementFinancials } from '@/domain/finance/settlements'
+import { settlementSignalMeta } from '@/config/finance'
+import { settlementPath } from '@/config/navigation'
+import { NewSettlementModal } from '@/features/finance/settlements/SettlementModals'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { Link } from 'react-router'
 import { costColumns, invoiceColumns, obligationColumns, receiptColumns, supplierPaymentColumns } from '@/features/finance/components/ledgerColumns'
 import { CurrencyResultCard, INSUFFICIENT } from '@/features/finance/components/ResultBlocks'
 import { NewInvoiceModal } from '@/features/finance/modals/NewInvoiceModal'
@@ -24,7 +30,7 @@ import type { ProjectContext } from '../projectContext'
 import { projectBudget, projectEstimatedCost } from '../selectors'
 import { CommercialSection } from './CommercialSection'
 
-type Dialog = 'invoice' | 'receipt' | 'cost' | 'obligation' | 'payment'
+type Dialog = 'invoice' | 'receipt' | 'cost' | 'obligation' | 'payment' | 'settlement'
 
 export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   const { project, workspace: ws } = ctx
@@ -48,6 +54,7 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   const budget = projectBudget(project)
   const estCost = projectEstimatedCost(project)
   const close = () => setDialog(null)
+  const settlements = ws.settlements.filter((x) => x.projectId === project.id).map((x) => ({ s: x, f: settlementFinancials(ws.dataset, x, DEMO_TODAY) }))
 
   return (
     <div className="flex flex-col gap-[24px]">
@@ -63,6 +70,40 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
               <CurrencyResultCard key={r.currency} result={r} />
             ))}
           </div>
+        )}
+      </Card>
+
+      <Card aria-labelledby="pf-settlements" className="px-[19px] pb-[18px] pt-[19px]">
+        <SectionTitle
+          id="pf-settlements"
+          title="Liquidación Eugenia – Florencia"
+          description="Participaciones sobre el resultado operativo del proyecto, por moneda."
+          action={
+            <Button size="sm" variant="outline" onClick={() => setDialog('settlement')}>
+              <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+              Nueva liquidación
+            </Button>
+          }
+        />
+        {settlements.length === 0 ? (
+          <p className="mt-[12px] text-[14px] text-muted">Sin liquidación registrada para este proyecto.</p>
+        ) : (
+          <ul className="mt-[14px] flex flex-col gap-[6px]">
+            {settlements.map(({ s, f }) => (
+              <li key={s.id}>
+                <Link to={settlementPath(s.id)} className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] bg-surface-muted px-[14px] py-[11px] text-[14px] transition-colors hover:bg-surface-sunken">
+                  <span className="flex items-center gap-[10px]">
+                    <span className="font-semibold">{s.currency}</span>
+                    <StatusBadge meta={settlementSignalMeta[f.signal]} />
+                    <span className="text-[13px] text-muted">{f.signalNote}</span>
+                  </span>
+                  <span className="tabular text-[13.5px] text-ink-secondary">
+                    {f.configured ? `Florencia ${formatCurrency(f.partnerShare!, s.currency, { decimals: 2 })} · pagado ${formatCurrency(f.partnerPaid, s.currency, { decimals: 2 })}` : 'Pendiente de configurar'}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
 
@@ -232,6 +273,7 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
         </div>
       </Card>
 
+      <NewSettlementModal open={dialog === 'settlement'} onClose={close} workspace={ws} projectId={project.id} />
       <NewInvoiceModal open={dialog === 'invoice'} onClose={close} workspace={ws} project={project} />
       <RecordReceiptModal open={dialog === 'receipt'} onClose={close} workspace={ws} clientId={project.clientId} />
       <CostModal open={dialog === 'cost'} onClose={close} workspace={ws} projectId={project.id} />

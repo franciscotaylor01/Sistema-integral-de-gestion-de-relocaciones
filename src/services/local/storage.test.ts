@@ -85,7 +85,7 @@ async function legacyDataset(version: 2 | 3) {
   const v4 = buildSeedDataset()
   const { ds, projectId } = createProject(v4, projectInput(), 'user-req', testContext())
   const {
-    legalEntities: _le, invoices: _i, receipts: _r, collectionActions: _c, agreements: _a, costs: _co, obligations: _o, supplierPayments: _sp, exchangeRates: _fx, audit: _au, suppliers: _s,
+    legalEntities: _le, invoices: _i, receipts: _r, collectionActions: _c, agreements: _a, costs: _co, obligations: _o, supplierPayments: _sp, exchangeRates: _fx, audit: _au, settlements: _st, suppliers: _s,
     ...rest
   } = ds
   const v3 = { ...rest, schemaVersion: 3, suppliers: mocks.mockSuppliers, invoices: mocks.mockInvoices, payables: mocks.mockPayables, payments: mocks.mockPayments }
@@ -95,21 +95,21 @@ async function legacyDataset(version: 2 | 3) {
 }
 
 describe('storage migrations', () => {
-  it('v2 → v4 keeps Phase 2 data and adds commercial and finance records', async () => {
+  it('v2 → v5 keeps Phase 2 data and adds commercial and finance records', async () => {
     const { data, projectId, tasks } = await legacyDataset(2)
     const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 2, savedAt: 'x', data }) })
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(4)
+    expect(dataset!.schemaVersion).toBe(5)
     expect(dataset!.projects.some((p) => p.id === projectId)).toBe(true)
     expect(dataset!.tasks.length).toBe(tasks)
     expect(dataset!.clients.every((c) => c.policy && !('priceLists' in c))).toBe(true)
     expect(dataset!.quotations.length).toBeGreaterThan(0)
-    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(4)
+    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(5)
     expect(readDataset(storage).issue).toBeUndefined()
   })
 
-  it('v3 → v4 converts flat finance records preserving collected and paid amounts', async () => {
+  it('v3 → v5 converts flat finance records preserving collected and paid amounts', async () => {
     const { mockInvoices, mockPayables } = await import('@/data/mock')
     const { invoiceFinancials, obligationFinancials } = await import('@/domain/finance/derive')
     const { data } = await legacyDataset(3)
@@ -130,5 +130,18 @@ describe('storage migrations', () => {
       expect(obligationFinancials(ds, ds.obligations.find((o) => o.id === legacy.id)!, '2026-10-19').paid).toBe(legacy.paid)
     }
     expect(ds.costs.every((c) => !c.projectId || ds.projects.some((p) => p.id === c.projectId))).toBe(true)
+  })
+
+  it('v4 → v5 adds settlements without touching existing finance records', async () => {
+    const v5 = buildSeedDataset()
+    const { settlements: _s, ...v4 } = v5
+    const data = { ...v4, schemaVersion: 4, projects: v4.projects.map((p, i) => (i === 0 ? { ...p, notes: 'Nota de Fase 4' } : p)) }
+    const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 4, savedAt: 'x', data }) })
+    const { dataset, issue } = readDataset(storage)
+    expect(issue).toBe('migrated')
+    expect(dataset!.schemaVersion).toBe(5)
+    expect(dataset!.projects[0].notes).toBe('Nota de Fase 4')
+    expect(dataset!.settlements.length).toBeGreaterThan(0)
+    expect(JSON.stringify([dataset!.invoices, dataset!.receipts, dataset!.obligations, dataset!.supplierPayments])).toBe(JSON.stringify([v4.invoices, v4.receipts, v4.obligations, v4.supplierPayments]))
   })
 })

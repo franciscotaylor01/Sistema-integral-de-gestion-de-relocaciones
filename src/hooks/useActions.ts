@@ -69,6 +69,13 @@ export function useActions(): Commands {
       reverseSupplierPayment: wrap(dataSource.reverseSupplierPayment),
       recordExchangeRate: wrap(dataSource.recordExchangeRate),
       correctExchangeRate: wrap(dataSource.correctExchangeRate),
+      createSettlement: wrap(dataSource.createSettlement),
+      configureSettlement: wrap(dataSource.configureSettlement),
+      addSettlementAdjustment: wrap(dataSource.addSettlementAdjustment),
+      recordSettlementRelease: wrap(dataSource.recordSettlementRelease),
+      linkSettlementObligation: wrap(dataSource.linkSettlementObligation),
+      unlinkSettlementObligation: wrap(dataSource.unlinkSettlementObligation),
+      confirmSettlement: wrap(dataSource.confirmSettlement),
       resetDemoData: wrap(dataSource.resetDemoData),
     }
   }, [])

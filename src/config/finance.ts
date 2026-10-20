@@ -1,4 +1,6 @@
-import type { CollectionActionKind, CostCategory, InvoiceKind, PaymentCondition, PaymentMethod, SupplierKind } from '@/types/domain'
+import type { SettlementSignal } from '@/domain/finance/settlements'
+import type { StatusMeta } from '@/config/catalogs'
+import type { CollectionActionKind, CostCategory, InvoiceKind, PaymentCondition, PaymentMethod, SettlementMethod, SettlementRelease, SupplierKind } from '@/types/domain'
 
 export const invoiceKindLabel: Record<InvoiceKind, string> = {
   A: 'Factura A',
@@ -45,3 +47,22 @@ export const supplierKindLabel: Record<SupplierKind, string> = {
 /** Shown wherever invoices are issued: SIGR records are not fiscal documents. */
 export const FISCAL_DISCLAIMER =
   'Registro interno de SIGR (demo). No es un comprobante fiscal: no se emite ni autoriza ante ARCA y no tiene CAE. Si la factura se emitió fuera de SIGR, cargá su número como referencia externa.'
+
+/** Derived settlement status (never stored): colour + meaning. */
+export const settlementSignalMeta: Record<SettlementSignal, StatusMeta> = {
+  green: { label: 'Pagada', tone: 'success' },
+  red: { label: 'Cobrado sin pagar', tone: 'danger' },
+  yellow: { label: 'Parcial / en condiciones', tone: 'warning' },
+  gray: { label: 'No liquidable', tone: 'neutral' },
+}
+
+export const settlementMethodLabel: Record<SettlementMethod, string> = {
+  percentage: 'Porcentaje del resultado',
+  fixed: 'Importe fijo acordado',
+  'by-service': 'Componentes por servicio',
+}
+
+export const settlementReleaseLabel: Record<SettlementRelease, string> = {
+  'after-collection': 'Proporcional a lo cobrado al cliente',
+  manual: 'Otra condición acordada (habilitación manual)',
+}

@@ -14,6 +14,7 @@ export {
   mockAgreements,
   mockCollectionActions,
   mockExchangeRates,
+  mockSettlements,
   mockExtraCosts,
   mockExtraObligations,
   mockExtraSupplierPayments,

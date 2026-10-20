@@ -27,7 +27,7 @@ const COLLECTIONS = [
   'staff', 'clients', 'suppliers', 'people', 'participants', 'projects', 'services', 'procedures',
   'tasks', 'activity', 'documents', 'currencyIndicators', 'alerts',
   'priceEntries', 'quotations', 'purchaseOrders',
-  'legalEntities', 'invoices', 'receipts', 'collectionActions', 'agreements', 'costs', 'obligations', 'supplierPayments', 'exchangeRates', 'audit',
+  'legalEntities', 'invoices', 'receipts', 'collectionActions', 'agreements', 'costs', 'obligations', 'supplierPayments', 'exchangeRates', 'audit', 'settlements',
 ] as const
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)
@@ -73,7 +73,8 @@ function validFinance(d: Dataset, projects: Set<string>, clients: Set<string>): 
     d.costs.every((c) => str(c.id) && money(c.amount) && (!c.projectId || projects.has(c.projectId))) &&
     d.obligations.every((o) => suppliers.has(o.supplierId) && costs.has(o.costId) && money(o.amount) && (!o.projectId || projects.has(o.projectId))) &&
     d.supplierPayments.every((p) => suppliers.has(p.supplierId) && money(p.amount) && Array.isArray(p.allocations) && p.allocations.every((a) => obligations.has(a.obligationId) && money(a.amount))) &&
-    d.suppliers.every((s) => str(s.id) && Array.isArray(s.categories))
+    d.suppliers.every((s) => str(s.id) && Array.isArray(s.categories)) &&
+    d.settlements.every((s) => str(s.id) && projects.has(s.projectId) && suppliers.has(s.supplierId) && Array.isArray(s.obligationIds) && s.obligationIds.every((o) => obligations.has(o)) && Array.isArray(s.adjustments) && Array.isArray(s.releases) && Array.isArray(s.confirmations) && Array.isArray(s.history))
   )
 }
 

@@ -5,7 +5,7 @@ import { SCHEMA_VERSION, type Dataset } from '@/domain/dataset'
 import { scheduleStages } from '@/domain/workflow'
 import { priceListsToEntries } from '@/domain/commercial/legacy'
 import { convertLegacyFinance, type LegacyFinance } from './legacyFinance'
-import type { Client, Person, PriceEntry, Procedure, ProjectParticipant, ProjectRecord, PurchaseOrder, Quotation, ServiceRecord, ServiceStatus, Task, WorkflowStage } from '@/types/domain'
+import type { Client, Person, PriceEntry, Procedure, ProjectParticipant, ProjectRecord, ProjectSettlement, PurchaseOrder, Quotation, ServiceRecord, ServiceStatus, Task, WorkflowStage } from '@/types/domain'
 import {
   mockActivity,
   mockAlerts,
@@ -13,6 +13,7 @@ import {
   mockClientCommercial,
   mockCollectionActions,
   mockExchangeRates,
+  mockSettlements,
   mockExtraCosts,
   mockExtraObligations,
   mockExtraSupplierPayments,
@@ -365,5 +366,13 @@ export function buildFinanceSeed(base: FinanceBase, legacy: LegacyFinance) {
     supplierPayments,
     exchangeRates: mockExchangeRates,
     audit: [],
+    settlements: buildSettlementSeed(base.projects, obligations),
   }
+}
+
+/** Demo settlements whose project exists; links to missing obligations are dropped. */
+export function buildSettlementSeed(projects: { id: string }[], obligations: { id: string }[]): ProjectSettlement[] {
+  const p = new Set(projects.map((x) => x.id))
+  const o = new Set(obligations.map((x) => x.id))
+  return mockSettlements.filter((s) => p.has(s.projectId)).map((s) => ({ ...s, obligationIds: s.obligationIds.filter((id) => o.has(id)) }))
 }

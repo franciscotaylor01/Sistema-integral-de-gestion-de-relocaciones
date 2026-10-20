@@ -49,6 +49,7 @@ export const router = createBrowserRouter([
       { path: 'tareas', lazy: () => import('@/features/tasks/TasksPage').then((m) => ({ Component: m.TasksPage })) },
       { path: 'finanzas', lazy: () => import('@/features/finance/FinancePage').then((m) => ({ Component: m.FinancePage })) },
       { path: 'facturas/:invoiceId', lazy: () => import('@/features/finance/InvoicePage').then((m) => ({ Component: m.InvoicePage })) },
+      { path: 'liquidaciones/:settlementId', lazy: () => import('@/features/finance/settlements/SettlementPage').then((m) => ({ Component: m.SettlementPage })) },
       { path: 'proveedores', lazy: () => import('@/features/suppliers/SuppliersPage').then((m) => ({ Component: m.SuppliersPage })) },
       { path: 'proveedores/:supplierId', lazy: () => import('@/features/suppliers/SupplierPage').then((m) => ({ Component: m.SupplierPage })) },
       ...upcomingModules,

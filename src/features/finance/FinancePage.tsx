@@ -19,12 +19,13 @@ import { TabPanel, Tabs } from '@/components/ui/Tabs'
 import { DEMO_TODAY } from '@/config/brand'
 import { invoiceStatusMeta, payableStatusMeta } from '@/config/catalogs'
 import { purchaseOrderStatusMeta, quotationStatusMeta } from '@/config/commercial'
-import { supplierKindLabel } from '@/config/finance'
+import { settlementSignalMeta, supplierKindLabel } from '@/config/finance'
 import { clientPath, projectPath, supplierPath } from '@/config/navigation'
 import { hasAmount } from '@/domain/commercial/money'
 import { projectCommercial } from '@/domain/commercial/traceability'
 import { receiptUnallocated } from '@/domain/finance/derive'
 import { addMoney } from '@/domain/finance/money'
+import type { SettlementSignal } from '@/domain/finance/settlements'
 import { companyExpenses, projectResults, type CurrencyResult } from '@/domain/finance/results'
 import { useActions } from '@/hooks/useActions'
 import { useWorkspace, type Workspace } from '@/hooks/useWorkspace'
@@ -44,13 +45,14 @@ import { NewInvoiceModal } from './modals/NewInvoiceModal'
 import { ObligationDetailModal, SupplierPaymentDetailModal, SupplierPaymentModal } from './modals/PaymentModals'
 import { ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
 import { CostModal, ObligationModal, SupplierFormModal } from './modals/SupplierModals'
+import { SettlementsView } from './settlements/SettlementsView'
 import { obligationOutstanding, outstandingOf, receivablesAging, summarizeLedger, supplierBalances } from './selectors'
 
-const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'comercial', 'cotizaciones', 'ordenes', 'pendientes'] as const
+const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'pendientes'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
 const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes']
-const SEARCHABLE: View[] = ['facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
+const SEARCHABLE: View[] = ['liquidaciones', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
   const { workspace, loading } = useWorkspace()
@@ -133,6 +135,7 @@ export function FinancePage() {
                 { value: 'pagos', label: 'Cobros y pagos', count: workspace.receipts.length + workspace.supplierPayments.length },
                 { value: 'costos', label: 'Costos y gastos' },
                 { value: 'resultados', label: 'Resultados por proyecto' },
+                { value: 'liquidaciones', label: 'Liquidaciones', count: workspace.settlements.length },
                 { value: 'comercial', label: 'Comercial' },
                 { value: 'cotizaciones', label: 'Cotizaciones', count: workspace.quotations.length },
                 { value: 'ordenes', label: 'Órdenes de compra', count: workspace.purchaseOrders.filter((p) => p.status === 'active').length },
@@ -151,7 +154,7 @@ export function FinancePage() {
               onChange={(v) => setParam('moneda', v)}
               options={usedCurrencies.map((c) => ({ value: c, label: c, icon: <CurrencyFlag currency={c} className="size-[16px]" /> }))}
             />
-            {COMMERCIAL_VIEWS.includes(view) && (
+            {(COMMERCIAL_VIEWS.includes(view) || view === 'liquidaciones') && (
               <FilterSelect size="sm" label="Cliente" value={client} onChange={(v) => setParam('cliente', v)} options={workspace.clients.map((c) => ({ value: c.id, label: c.name }))} />
             )}
             {view === 'cotizaciones' && (
@@ -170,6 +173,15 @@ export function FinancePage() {
                 value={status}
                 onChange={(v) => setParam('estado', v)}
                 options={(Object.keys(purchaseOrderStatusMeta) as PurchaseOrderStatus[]).map((s) => ({ value: s, label: purchaseOrderStatusMeta[s].label }))}
+              />
+            )}
+            {view === 'liquidaciones' && (
+              <FilterSelect
+                size="sm"
+                label="Estado"
+                value={status}
+                onChange={(v) => setParam('estado', v)}
+                options={(Object.keys(settlementSignalMeta) as SettlementSignal[]).map((s) => ({ value: s, label: settlementSignalMeta[s].label }))}
               />
             )}
             {view === 'facturas' && (
@@ -232,6 +244,7 @@ export function FinancePage() {
                 {view === 'pagos' && <PaymentsView workspace={workspace} currency={currency} direction={status} q={q} />}
                 {view === 'costos' && <CostsView workspace={workspace} currency={currency} scope={scope} q={q} />}
                 {view === 'resultados' && <ResultsView workspace={workspace} currency={currency} q={q} />}
+                {view === 'liquidaciones' && <SettlementsView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
                 {view === 'comercial' && <CommercialOverview workspace={workspace} currency={currency} client={client} />}
                 {view === 'cotizaciones' && <QuotationsView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
                 {view === 'ordenes' && <PurchaseOrdersView workspace={workspace} currency={currency} client={client} status={status} q={q} />}

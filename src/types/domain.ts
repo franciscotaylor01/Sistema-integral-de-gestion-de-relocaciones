@@ -613,7 +613,7 @@ export interface AuditEvent {
   id: string
   date: string
   actorId: string
-  entity: 'invoice' | 'receipt' | 'cost' | 'obligation' | 'supplier-payment' | 'supplier' | 'exchange-rate' | 'agreement'
+  entity: 'invoice' | 'receipt' | 'cost' | 'obligation' | 'supplier-payment' | 'supplier' | 'exchange-rate' | 'agreement' | 'settlement'
   entityId: string
   action: string
   detail: string
@@ -746,4 +746,96 @@ export interface Notification {
   date: string
   href: string
   read: boolean
+}
+
+/* ───────────── Phase 4.5 — Eugenia–Florencia settlements ───────────── */
+
+/**
+ * How the partner's (Florencia's) share is determined. No default split is
+ * assumed: without a rule the settlement stays "Pendiente de configurar".
+ */
+export type SettlementMethod = 'percentage' | 'fixed' | 'by-service'
+
+/** Per-service component (method "by-service"): a % of that service's base or a fixed amount. */
+export interface SettlementComponent {
+  id: string
+  serviceId: string
+  method: 'percentage' | 'fixed'
+  /** Partner % of the service base (0–100, up to 2 decimals). */
+  pct?: number
+  amount?: number
+}
+
+export interface SettlementRule {
+  method: SettlementMethod
+  pct?: number
+  amount?: number
+  components: SettlementComponent[]
+}
+
+/**
+ * When the partner share becomes payable: proportionally to what the client
+ * actually paid, or on explicitly recorded releases (another agreed condition).
+ */
+export type SettlementRelease = 'after-collection' | 'manual'
+
+export interface SettlementAdjustment {
+  id: string
+  date: string
+  /** Signed: + increases the partner share, − decreases it. */
+  amount: number
+  reason: string
+  actorId: string
+}
+
+export interface SettlementReleaseEntry {
+  id: string
+  date: string
+  amount: number
+  reason: string
+  actorId: string
+}
+
+/** Immutable snapshot of a confirmed settlement (historical record). */
+export interface SettlementConfirmation {
+  id: string
+  date: string
+  actorId: string
+  netRevenue: number
+  directCosts: number
+  base: number
+  partnerShare: number
+  ownerShare: number
+  releasable: number
+  partnerInvoiced: number
+  partnerPaid: number
+  note?: string
+}
+
+export interface SettlementHistoryEntry {
+  id: string
+  date: string
+  actorId: string
+  action: string
+  reason?: string
+}
+
+export interface ProjectSettlement {
+  id: string
+  projectId: string
+  /** The partner, reusing the supplier record (Florencia). */
+  supplierId: string
+  currency: CurrencyCode
+  rule?: SettlementRule
+  release: SettlementRelease
+  releaseNote?: string
+  releases: SettlementReleaseEntry[]
+  adjustments: SettlementAdjustment[]
+  /** Partner invoices (supplier obligations) that document this share. */
+  obligationIds: string[]
+  confirmations: SettlementConfirmation[]
+  history: SettlementHistoryEntry[]
+  notes?: string
+  createdAt: string
+  createdBy: string
 }

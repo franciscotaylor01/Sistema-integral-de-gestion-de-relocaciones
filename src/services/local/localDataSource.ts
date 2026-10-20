@@ -17,6 +17,7 @@ import {
 } from '@/domain/commercial/quotations'
 import { recordCost, voidCost } from '@/domain/finance/costs'
 import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
+import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation } from '@/domain/finance/settlements'
 import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
 import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
 import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt } from '@/domain/finance/receipts'
@@ -175,6 +176,13 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     reverseSupplierPayment: (id, reason) => simple((ds) => reverseSupplierPayment(ds, id, reason, ctx)),
     recordExchangeRate: (input) => run((ds) => recordExchangeRate(ds, input, ctx)),
     correctExchangeRate: (id, rate, reason) => run((ds) => correctExchangeRate(ds, id, rate, reason, ctx)),
+    createSettlement: (input, requestId) => run((ds) => createSettlement(ds, input, requestId, ctx)),
+    configureSettlement: (id, input, reason) => simple((ds) => configureSettlement(ds, id, input, reason, ctx)),
+    addSettlementAdjustment: (id, input) => simple((ds) => addSettlementAdjustment(ds, id, input, ctx)),
+    recordSettlementRelease: (id, input) => simple((ds) => recordSettlementRelease(ds, id, input, ctx)),
+    linkSettlementObligation: (id, obligationId) => simple((ds) => linkSettlementObligation(ds, id, obligationId, ctx)),
+    unlinkSettlementObligation: (id, obligationId, reason) => simple((ds) => unlinkSettlementObligation(ds, id, obligationId, reason, ctx)),
+    confirmSettlement: (id, note) => simple((ds) => confirmSettlement(ds, id, note, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

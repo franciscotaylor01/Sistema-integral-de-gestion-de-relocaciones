@@ -1,3 +1,5 @@
+import type { SettlementInput } from '@/domain/finance/settlements'
+import type { SettlementRelease, SettlementRule } from '@/types/domain'
 import type { Dataset } from '@/domain/dataset'
 import type { ClientInput } from '@/domain/commercial/clients'
 import type { PriceEntryInput } from '@/domain/commercial/pricing'
@@ -90,9 +92,28 @@ export interface SigrDataSource {
   reverseSupplierPayment(paymentId: string, reason: string): Promise<CommandResult>
   recordExchangeRate(input: ExchangeRateInput): Promise<CommandResult<{ rateId: string }>>
   correctExchangeRate(rateId: string, rate: string, reason: string): Promise<CommandResult<{ rateId: string }>>
+  createSettlement(input: SettlementInput, requestId: string): Promise<CommandResult<{ settlementId: string; duplicate: boolean }>>
+  configureSettlement(settlementId: string, input: SettlementConfigInput, reason: string): Promise<CommandResult>
+  addSettlementAdjustment(settlementId: string, input: SettlementAmountInput): Promise<CommandResult>
+  recordSettlementRelease(settlementId: string, input: SettlementAmountInput): Promise<CommandResult>
+  linkSettlementObligation(settlementId: string, obligationId: string): Promise<CommandResult>
+  unlinkSettlementObligation(settlementId: string, obligationId: string, reason: string): Promise<CommandResult>
+  confirmSettlement(settlementId: string, note: string): Promise<CommandResult>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>
 }
 
 export const dataSource: SigrDataSource = createLocalDataSource()
+
+export interface SettlementConfigInput {
+  rule: SettlementRule
+  release: SettlementRelease
+  releaseNote?: string
+}
+
+export interface SettlementAmountInput {
+  amount: number
+  date: string
+  reason: string
+}
