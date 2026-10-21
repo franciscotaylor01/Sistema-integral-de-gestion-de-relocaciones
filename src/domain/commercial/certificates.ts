@@ -2,7 +2,7 @@ import { getServiceType } from '@/config/serviceCatalog'
 import type { Certificate, CertificateLine, CurrencyCode, ProjectRecord } from '@/types/domain'
 import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
-import type { DomainContext } from '../context'
+import { businessStamp, type DomainContext } from '../context'
 import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { nextNumber } from '../finance/numbering'
@@ -108,7 +108,7 @@ export function validateCertificate(ds: Dataset, input: CertificateInput): Recor
 }
 
 /** Business-date timestamp: demo date (ctx.today) with the time of day, so all certificate dates share one calendar. */
-const stamp = (ctx: DomainContext) => `${ctx.today()}T${ctx.now().slice(11, 19) || '00:00:00'}`
+const stamp = businessStamp
 
 const project = (ds: Dataset, id: string): ProjectRecord => {
   const p = findById(ds.projects, id)

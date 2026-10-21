@@ -4,7 +4,7 @@ import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
 import { projectCommercial } from '../commercial/traceability'
 import { effectivePolicy } from '../commercial/catalog'
-import type { DomainContext } from '../context'
+import { businessStamp, type DomainContext } from '../context'
 import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { appendAudit } from './audit'
@@ -305,9 +305,19 @@ export function cancelInvoice(ds: Dataset, invoiceId: string, reason: string, ct
   if (!inv) throw new DomainError('La factura no existe.')
   if (inv.lifecycle === 'cancelled') return ds
   if (!reason.trim()) throw new DomainError('Indicá el motivo de la anulación.', { reason: 'Indicá el motivo.' })
-  const paid = financeIndex(ds).paidByInvoice.get(invoiceId) ?? 0
-  if (cmpMoney(paid, 0) > 0) throw new DomainError('La factura tiene cobros aplicados. Revertí primero esos cobros para poder anularla.')
-  let next: Dataset = { ...ds, invoices: replaceById(ds.invoices, invoiceId, (x) => ({ ...x, lifecycle: 'cancelled', cancelledAt: ctx.today(), cancelReason: reason.trim() })) }
+  const idx = financeIndex(ds)
+  const paid = addMoney(idx.paidByInvoice.get(invoiceId) ?? 0, idx.withheldByInvoice.get(invoiceId) ?? 0)
+  if (cmpMoney(paid, 0) > 0) throw new DomainError('La factura tiene cobros o retenciones aplicados. Revertí primero esos cobros para poder anularla.')
+  let next: Dataset = {
+    ...ds,
+    invoices: replaceById(ds.invoices, invoiceId, (x) => ({
+      ...x,
+      lifecycle: 'cancelled',
+      cancelledAt: ctx.today(),
+      cancelReason: reason.trim(),
+      history: [{ id: ctx.newId('ivh'), date: businessStamp(ctx), actorId: ctx.actorId, action: 'Anulada', detail: reason.trim() }, ...(x.history ?? [])],
+    })),
+  }
   next = appendAudit(next, { entity: 'invoice', entityId: invoiceId, action: 'cancel', detail: reason.trim(), projectId: inv.projectId }, ctx)
   return logActivity(next, { projectId: inv.projectId, kind: 'finance', message: `Factura ${inv.number} anulada: ${reason.trim()}` }, ctx)
 }

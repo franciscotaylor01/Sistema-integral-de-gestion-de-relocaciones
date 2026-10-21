@@ -1,4 +1,5 @@
 import { withCatalogSeed } from '@/data/catalogSeed'
+import { withReceivablesSeed } from '@/data/receivablesSeed'
 import { buildCommercialSeed, buildFinanceSeed, buildSettlementSeed, withCommercial } from '@/data/seed'
 import type { LegacyInvoice, LegacyPayable, LegacyPayment, LegacySupplier } from '@/data/mock/seedTypes'
 import { priceListsToEntries } from '@/domain/commercial/legacy'
@@ -62,11 +63,17 @@ function v5ToV6(data: Omit<Dataset, 'catalogItems' | 'openOrders' | 'certificate
   return withCatalogSeed({ ...data, schemaVersion: 6, catalogItems: [], openOrders: [], certificates: [] })
 }
 
+/** v6 → v7: attachments metadata, payment terms on demo open POs and a demo reconciled invoice. Nothing is reinterpreted. */
+function v6ToV7(data: Omit<Dataset, 'attachments'>): Dataset {
+  return withReceivablesSeed({ ...data, schemaVersion: 7, attachments: [] })
+}
+
 const steps: Record<number, (data: never) => unknown> = {
   2: v2ToV3 as (data: never) => unknown,
   3: v3ToV4 as (data: never) => unknown,
   4: v4ToV5 as (data: never) => unknown,
   5: v5ToV6 as (data: never) => unknown,
+  6: v6ToV7 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

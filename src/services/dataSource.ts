@@ -1,5 +1,8 @@
 import type { CatalogItemInput, OpenOrderInput, ServiceItemInput } from '@/domain/commercial/catalog'
 import type { CertificateInput } from '@/domain/commercial/certificates'
+import type { EmissionInput } from '@/domain/finance/emission'
+import type { WithholdingInput } from '@/domain/finance/receipts'
+import type { AttachmentInput } from '@/domain/finance/attachments'
 import type { OpenOrderStatus, ProjectRecord } from '@/types/domain'
 import type { SettlementInput } from '@/domain/finance/settlements'
 import type { SettlementRelease, SettlementRule } from '@/types/domain'
@@ -114,6 +117,12 @@ export interface SigrDataSource {
   approveCertificate(certificateId: string, input: { date: string }): Promise<CommandResult>
   rejectCertificate(certificateId: string, reason: string): Promise<CommandResult>
   setProjectException(projectId: string, exception: ProjectRecord['commercialException'] | null): Promise<CommandResult>
+  confirmInvoiceEmission(invoiceId: string, input: EmissionInput): Promise<CommandResult>
+  recordFiscalData(invoiceId: string, input: EmissionInput): Promise<CommandResult>
+  correctFiscalData(invoiceId: string, input: EmissionInput, reason: string): Promise<CommandResult>
+  changeInvoiceDueDate(invoiceId: string, dueDate: string, reason: string): Promise<CommandResult>
+  addReceiptWithholdings(receiptId: string, items: WithholdingInput[]): Promise<CommandResult>
+  addAttachment(input: AttachmentInput): Promise<CommandResult<{ attachmentId: string }>>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

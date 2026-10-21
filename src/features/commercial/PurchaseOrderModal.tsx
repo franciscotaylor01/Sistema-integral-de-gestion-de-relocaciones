@@ -1,3 +1,4 @@
+import { PaymentTermsFields } from '@/features/finance/components/PaymentTermsFields'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/Button'
@@ -62,6 +63,7 @@ function PurchaseOrderForm({ onClose, workspace: ws, project, purchaseOrder: po,
     authorizedAmount: po?.authorizedAmount ?? 0,
     allocations: po?.allocations.map((a) => ({ serviceId: a.serviceId, amount: a.amount, notes: a.notes })) ?? [],
     notes: po?.notes ?? '',
+    paymentTerms: po?.paymentTerms,
   }))
   const patch = (p: Partial<PurchaseOrderInput>) => setInput((i) => ({ ...i, ...p }))
   const currency = input.currency as CurrencyCode
@@ -219,6 +221,7 @@ function PurchaseOrderForm({ onClose, workspace: ws, project, purchaseOrder: po,
           })}
         </div>
       </div>
+      <PaymentTermsFields value={input.paymentTerms} onChange={(t) => patch({ paymentTerms: t })} error={errors.paymentTerms} />
       <Field label="Notas" error={errors.notes}>
         {(p) => <TextArea {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={2000} className="min-h-[70px]" />}
       </Field>

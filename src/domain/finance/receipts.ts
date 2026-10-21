@@ -1,7 +1,7 @@
-import type { CollectionActionKind, CurrencyCode, CustomerReceipt, PaymentMethod } from '@/types/domain'
+import type { CollectionActionKind, CurrencyCode, CustomerReceipt, PaymentMethod, Withholding, WithholdingType } from '@/types/domain'
 import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
-import type { DomainContext } from '../context'
+import { businessStamp, type DomainContext } from '../context'
 import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { appendAudit } from './audit'
@@ -23,8 +23,60 @@ export interface ReceiptInput {
   reference?: string
   notes?: string
   allocations: AllocationInput[]
+  /** Documented withholdings (entered as received; never computed). */
+  withholdings?: WithholdingInput[]
   exchangeRateId?: string
 }
+
+export interface WithholdingInput {
+  type: WithholdingType
+  invoiceId: string
+  amount: number
+  jurisdiction?: string
+  certificateRef?: string
+  notes?: string
+}
+
+const WH_TYPES: WithholdingType[] = ['iva', 'ganancias', 'iibb', 'other']
+
+/**
+ * Withholdings must target issued invoices of the same client and currency. Cash
+ * allocations plus withholdings can never exceed an invoice's balance.
+ */
+function validateWithholdings(ds: Dataset, clientId: string, currency: CurrencyCode | '', items: WithholdingInput[], allocations: AllocationInput[], today: string, f: Record<string, string>) {
+  const perInvoice = new Map<string, number>()
+  for (const a of allocations) if (isMoney(a.amount)) perInvoice.set(a.invoiceId, addMoney(perInvoice.get(a.invoiceId) ?? 0, a.amount))
+  items.forEach((w, i) => {
+    const k = (x: string) => `withholdings.${i}.${x}`
+    if (!WH_TYPES.includes(w.type)) f[k('type')] = 'Elegí el tipo.'
+    const inv = findById(ds.invoices, w.invoiceId)
+    if (!inv || inv.clientId !== clientId) f[k('invoiceId')] = 'Elegí una factura del cliente.'
+    else if (inv.lifecycle !== 'issued') f[k('invoiceId')] = 'Solo facturas emitidas.'
+    else if (currency && inv.currency !== currency) f[k('invoiceId')] = `La factura está en ${inv.currency}.`
+    if (!isMoney(w.amount) || w.amount <= 0) f[k('amount')] = 'Importe mayor a cero (hasta 2 decimales), según el certificado recibido.'
+    if ((w.jurisdiction?.length ?? 0) > 60) f[k('jurisdiction')] = 'Máximo 60 caracteres.'
+    if ((w.certificateRef?.length ?? 0) > 60) f[k('certificateRef')] = 'Máximo 60 caracteres.'
+    if (inv && isMoney(w.amount)) perInvoice.set(inv.id, addMoney(perInvoice.get(inv.id) ?? 0, w.amount))
+  })
+  for (const [invoiceId, total] of perInvoice) {
+    const inv = findById(ds.invoices, invoiceId)
+    if (!inv || inv.lifecycle !== 'issued') continue
+    const outstanding = invoiceFinancials(ds, inv, today).outstanding
+    if (cmpMoney(total, outstanding) > 0) f[items.length ? 'withholdings' : 'allocations'] = `Cobros y retenciones aplicados a ${inv.number} (${total}) superan su saldo (${inv.currency} ${outstanding}).`
+  }
+}
+
+const buildWithholdings = (items: WithholdingInput[], ctx: DomainContext): Withholding[] =>
+  items.map((w) => ({
+    id: ctx.newId('ret'),
+    type: w.type,
+    invoiceId: w.invoiceId,
+    amount: w.amount,
+    jurisdiction: w.jurisdiction?.trim() || undefined,
+    certificateRef: w.certificateRef?.trim() || undefined,
+    notes: w.notes?.trim() || undefined,
+    createdAt: businessStamp(ctx),
+  }))
 
 /** Allocations must target issued invoices of the client in the same currency, within their balance. */
 function validateAllocations(ds: Dataset, clientId: string, currency: CurrencyCode | '', allocations: AllocationInput[], available: number, today: string, f: Record<string, string>) {
@@ -64,6 +116,7 @@ export function validateReceipt(ds: Dataset, input: ReceiptInput, today: string)
     f.reference = 'Ya hay un cobro registrado con esta referencia para el cliente.'
   }
   validateAllocations(ds, input.clientId, input.currency, input.allocations, isMoney(input.amount) ? input.amount : 0, today, f)
+  validateWithholdings(ds, input.clientId, input.currency, input.withholdings ?? [], input.allocations, today, f)
   return f
 }
 
@@ -84,6 +137,7 @@ export function recordReceipt(ds: Dataset, input: ReceiptInput, requestId: strin
     reference: input.reference?.trim() || undefined,
     notes: input.notes?.trim() || undefined,
     allocations: input.allocations.map((a) => ({ id: ctx.newId('ra'), invoiceId: a.invoiceId, amount: a.amount, date: input.date })),
+    withholdings: input.withholdings?.length ? buildWithholdings(input.withholdings, ctx) : undefined,
     fx: input.exchangeRateId ? { exchangeRateId: input.exchangeRateId } : undefined,
     status: 'recorded',
     createdAt: ctx.now(),
@@ -151,4 +205,18 @@ export function addCollectionAction(ds: Dataset, input: CollectionActionInput, c
   const action = { id: ctx.newId('col'), invoiceId: inv.id, clientId: inv.clientId, date: ctx.now(), actorId: ctx.actorId, kind: input.kind, text: input.text.trim(), promisedDate: input.promisedDate || undefined }
   const next: Dataset = { ...ds, collectionActions: [action, ...ds.collectionActions] }
   return logActivity(next, { projectId: inv.projectId, kind: 'finance', message: `Gestión de cobranza (${inv.number}): ${action.text}${action.promisedDate ? ` · promesa de pago ${action.promisedDate}` : ''}` }, ctx)
+}
+
+/** Adds withholdings documented later (e.g. the detail arrives by email after the deposit). */
+export function addReceiptWithholdings(ds: Dataset, receiptId: string, items: WithholdingInput[], ctx: DomainContext): Dataset {
+  const r = findById(ds.receipts, receiptId)
+  if (!r) throw new DomainError('El cobro no existe.')
+  if (r.status !== 'recorded') throw new DomainError('No se agregan retenciones a un cobro revertido.')
+  if (!items.length) throw new DomainError('Cargá al menos una retención.')
+  const f: Record<string, string> = {}
+  validateWithholdings(ds, r.clientId, r.currency, items, [], ctx.today(), f)
+  if (Object.keys(f).length) throw new DomainError('Revisá las retenciones.', f)
+  const added = buildWithholdings(items, ctx)
+  const next: Dataset = { ...ds, receipts: replaceById(ds.receipts, receiptId, (x) => ({ ...x, withholdings: [...(x.withholdings ?? []), ...added] })) }
+  return appendAudit(next, { entity: 'receipt', entityId: receiptId, action: 'withholdings', detail: added.map((w) => `${w.type} ${w.amount}`).join(', ') }, ctx)
 }

@@ -29,6 +29,8 @@ export const lineSubtotal = (l: { unitPrice: number; quantity: number }) => mulM
 
 export interface FinanceIndex {
   paidByInvoice: Map<string, number>
+  /** Documented withholdings applied per invoice (recorded receipts only). */
+  withheldByInvoice: Map<string, number>
   lastReceiptByInvoice: Map<string, string>
   paidByObligation: Map<string, number>
   lastPaymentByObligation: Map<string, string>
@@ -40,12 +42,16 @@ const indexCache = new WeakMap<object, FinanceIndex>()
 export function financeIndex(ds: Pick<Dataset, 'receipts' | 'supplierPayments'>): FinanceIndex {
   const cached = indexCache.get(ds)
   if (cached) return cached
-  const idx: FinanceIndex = { paidByInvoice: new Map(), lastReceiptByInvoice: new Map(), paidByObligation: new Map(), lastPaymentByObligation: new Map() }
+  const idx: FinanceIndex = { paidByInvoice: new Map(), withheldByInvoice: new Map(), lastReceiptByInvoice: new Map(), paidByObligation: new Map(), lastPaymentByObligation: new Map() }
   for (const r of ds.receipts) {
     if (r.status !== 'recorded') continue
     for (const a of r.allocations) {
       idx.paidByInvoice.set(a.invoiceId, addMoney(idx.paidByInvoice.get(a.invoiceId) ?? 0, a.amount))
       if ((idx.lastReceiptByInvoice.get(a.invoiceId) ?? '') < a.date) idx.lastReceiptByInvoice.set(a.invoiceId, a.date)
+    }
+    for (const w of r.withholdings ?? []) {
+      idx.withheldByInvoice.set(w.invoiceId, addMoney(idx.withheldByInvoice.get(w.invoiceId) ?? 0, w.amount))
+      if ((idx.lastReceiptByInvoice.get(w.invoiceId) ?? '') < r.date) idx.lastReceiptByInvoice.set(w.invoiceId, r.date)
     }
   }
   for (const p of ds.supplierPayments) {
@@ -60,7 +66,12 @@ export function financeIndex(ds: Pick<Dataset, 'receipts' | 'supplierPayments'>)
 }
 
 export interface InvoiceFinancials extends InvoiceTotals {
+  /** Cash deposited and applied (bank collections). */
   paid: number
+  /** Documented tax withholdings applied. */
+  withheld: number
+  /** Commercial total computed by SIGR (lines + user-entered taxes). */
+  commercialTotal: number
   outstanding: number
   status: InvoiceStatus
   overdue: boolean
@@ -69,19 +80,25 @@ export interface InvoiceFinancials extends InvoiceTotals {
 }
 
 export function invoiceFinancials(ds: Pick<Dataset, 'receipts' | 'supplierPayments'>, inv: Invoice, today: string): InvoiceFinancials {
-  const totals = invoiceTotals(inv)
-  const paid = inv.lifecycle === 'issued' ? (financeIndex(ds).paidByInvoice.get(inv.id) ?? 0) : 0
-  const outstanding = inv.lifecycle === 'issued' ? subMoney(totals.total, paid) : 0
+  const computed = invoiceTotals(inv)
+  // Once the external emission is confirmed, the fiscal total is what the client owes.
+  const totals = { ...computed, total: inv.fiscal?.total ?? computed.total }
+  const idx = financeIndex(ds)
+  const paid = inv.lifecycle === 'issued' ? (idx.paidByInvoice.get(inv.id) ?? 0) : 0
+  const withheld = inv.lifecycle === 'issued' ? (idx.withheldByInvoice.get(inv.id) ?? 0) : 0
+  const outstanding = inv.lifecycle === 'issued' ? subMoney(subMoney(totals.total, paid), withheld) : 0
   const overdue = inv.lifecycle === 'issued' && cmpMoney(outstanding, 0) > 0 && inv.dueDate < today
   let status: InvoiceStatus = inv.lifecycle
   if (inv.lifecycle === 'issued') {
     if (cmpMoney(outstanding, 0) <= 0) status = 'paid'
     else if (overdue) status = 'overdue'
-    else if (cmpMoney(paid, 0) > 0) status = 'partially-paid'
+    else if (cmpMoney(addMoney(paid, withheld), 0) > 0) status = 'partially-paid'
   }
   return {
     ...totals,
+    commercialTotal: computed.total,
     paid,
+    withheld,
     outstanding,
     status,
     overdue,

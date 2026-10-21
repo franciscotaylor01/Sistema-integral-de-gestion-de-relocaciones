@@ -15,7 +15,7 @@ import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
 import { CURRENCY_ORDER } from '@/lib/money'
-import type { BillingMilestone, Client, ClientStatus, CountryCode, CurrencyCode, PoMode } from '@/types/domain'
+import type { BillingMilestone, Client, ClientStatus, CountryCode, CurrencyCode, PaymentDayType, PoMode } from '@/types/domain'
 
 interface ClientFormModalProps {
   open: boolean
@@ -59,6 +59,7 @@ function toInput(c: Client | undefined, defaultManager: string): ClientInput {
     quoteValidityDays: c?.policy.quoteValidityDays ?? 30,
     poMode: c?.policy.poMode ?? (c ? (c.policy.requiresPurchaseOrder ? 'project' : 'none') : 'project'),
     requiresCertificate: c?.policy.requiresCertificate ?? false,
+    paymentDayType: c?.policy.paymentDayType ?? 'calendar',
     contacts: c?.contacts.map((x) => ({ ...x, primary: Boolean(x.primary) })) ?? [{ name: '', role: '', email: '', phone: '', primary: true }],
     notes: c?.notes ?? '',
   }
@@ -214,8 +215,16 @@ function ClientForm({ onClose, workspace: ws, client }: ClientFormModalProps) {
               </SelectInput>
             )}
           </Field>
-          <Field label="Plazo de pago (días)" required error={errors.paymentTermsDays}>
+          <Field label="Plazo de pago (días)" required error={errors.paymentTermsDays} hint="Desde la fecha de emisión de la factura.">
             {(p) => <TextInput {...p} type="number" min={0} max={180} value={input.paymentTermsDays} onChange={(e) => patch({ paymentTermsDays: Number(e.target.value) })} />}
+          </Field>
+          <Field label="Tipo de días" hint="Hábiles: excluye sábados y domingos (feriados no configurados).">
+            {(p) => (
+              <SelectInput {...p} value={input.paymentDayType} onChange={(e) => patch({ paymentDayType: e.target.value as PaymentDayType })}>
+                <option value="calendar">Corridos</option>
+                <option value="business">Hábiles</option>
+              </SelectInput>
+            )}
           </Field>
           <Field label="Validez de cotizaciones (días)" required error={errors.quoteValidityDays}>
             {(p) => <TextInput {...p} type="number" min={1} max={180} value={input.quoteValidityDays} onChange={(e) => patch({ quoteValidityDays: Number(e.target.value) })} />}

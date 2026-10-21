@@ -111,6 +111,8 @@ export interface CommercialPolicy {
   poMode?: PoMode
   /** Invoicing requires an approved certificate from the client's portal. */
   requiresCertificate?: boolean
+  /** Phase 4.7: payment term counted in calendar or business days (default calendar). */
+  paymentDayType?: PaymentDayType
 }
 
 export type PoMode = 'open' | 'project' | 'none'
@@ -445,6 +447,55 @@ export interface Invoice {
   cancelReason?: string
   /** Migrated from the Phase 1 flat invoice records. */
   legacy?: boolean
+  /** Phase 4.7: data of the externally issued fiscal document (absent until confirmed). */
+  fiscal?: InvoiceFiscal
+  /** Payment terms applied and resulting due date, frozen at emission. */
+  paymentTerms?: InvoicePaymentTerms
+  history?: InvoiceEvent[]
+}
+
+export type PaymentDayType = 'calendar' | 'business'
+
+export interface PaymentTerms {
+  days: number
+  dayType: PaymentDayType
+}
+
+export interface InvoicePaymentTerms extends PaymentTerms {
+  source: 'purchase-order' | 'open-order' | 'client' | 'manual'
+  sourceRef?: string
+  /** Documented reason (manual terms or due-date exception). */
+  reason?: string
+  /** Due date computed from the fiscal issue date. */
+  computedDueDate: string
+  /** Set when the due date was changed by a justified exception. */
+  exception?: { dueDate: string; reason: string; date: string }
+}
+
+/** Snapshot of the fiscal document issued outside SIGR (ARCA). SIGR never computes fiscal amounts. */
+export interface InvoiceFiscal {
+  voucherType: InvoiceKind
+  pointOfSale: string
+  number: string
+  issueDate: string
+  /** Total on the fiscal document, as entered. */
+  total: number
+  currency: CurrencyCode
+  notes?: string
+  reference?: string
+  confirmedAt: string
+  /** Commercial lines and totals at the moment of emission. */
+  linesSnapshot: InvoiceLine[]
+  commercialSubtotal: number
+  commercialTotal: number
+}
+
+export interface InvoiceEvent {
+  id: string
+  date: string
+  actorId: string
+  action: string
+  detail?: string
 }
 
 export type PaymentMethod = 'transfer' | 'wire' | 'check' | 'card' | 'cash'
@@ -477,6 +528,8 @@ export interface CustomerReceipt {
   reference?: string
   notes?: string
   allocations: ReceiptAllocation[]
+  /** Phase 4.7: tax withholdings documented by the client (entered manually, never computed). */
+  withholdings?: Withholding[]
   fx?: FxMeta
   status: 'recorded' | 'reversed'
   reversedAt?: string
@@ -736,6 +789,8 @@ export interface PurchaseOrder {
   currency: CurrencyCode
   authorizedAmount: number
   allocations: PoAllocation[]
+  /** Phase 4.7: payment condition stated on the PO (takes precedence over the client's). */
+  paymentTerms?: PaymentTerms
   status: PurchaseOrderStatus
   /** Stable reference reserved for the PO document (storage arrives later). */
   documentRef: string
@@ -920,6 +975,7 @@ export interface OpenPurchaseOrder {
   validTo?: string
   status: OpenOrderStatus
   conditions?: string
+  paymentTerms?: PaymentTerms
   items: OpenOrderItem[]
   documentRef: string
   createdAt: string
@@ -961,4 +1017,39 @@ export interface Certificate {
   notes?: string
   documentRef: string
   history: { id: string; date: string; actorId: string; action: string; reason?: string }[]
+}
+
+/* ───────────── Phase 4.7 — withholdings and attachments ───────────── */
+
+export type WithholdingType = 'iva' | 'ganancias' | 'iibb' | 'other'
+
+/** Withholding applied by the client to an invoice, as documented (not money received). */
+export interface Withholding {
+  id: string
+  type: WithholdingType
+  invoiceId: string
+  amount: number
+  jurisdiction?: string
+  certificateRef?: string
+  notes?: string
+  createdAt: string
+}
+
+export type AttachmentEntity = 'invoice' | 'receipt' | 'withholding'
+
+/**
+ * Document evidence. "indexeddb": the file is stored in this browser only;
+ * "reference": only a reference was recorded (no file stored).
+ */
+export interface Attachment {
+  id: string
+  entity: AttachmentEntity
+  entityId: string
+  name: string
+  mime?: string
+  size?: number
+  storage: 'indexeddb' | 'reference'
+  reference?: string
+  createdAt: string
+  createdBy: string
 }

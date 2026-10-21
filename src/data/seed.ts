@@ -1,4 +1,5 @@
 import { withCatalogSeed } from './catalogSeed'
+import { withReceivablesSeed } from './receivablesSeed'
 import { getProcedureType } from '@/config/procedureCatalog'
 import { getServiceType } from '@/config/serviceCatalog'
 import { getWorkflowTemplate } from '@/config/workflowTemplates'
@@ -228,11 +229,11 @@ export function buildBaseSeedDataset(): Dataset {
     ...commercial,
     requests: {},
   }
-  return { ...dataset, catalogItems: [], openOrders: [], certificates: [] }
+  return { ...dataset, catalogItems: [], openOrders: [], certificates: [], attachments: [] }
 }
 
 export function buildSeedDataset(): Dataset {
-  return withCatalogSeed(buildBaseSeedDataset())
+  return withReceivablesSeed(withCatalogSeed(buildBaseSeedDataset()))
 }
 
 const SEED_TIME = '2026-01-05T09:00:00'

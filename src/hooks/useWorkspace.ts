@@ -17,6 +17,7 @@ import type {
   CatalogItem,
   OpenPurchaseOrder,
   Certificate,
+  Attachment,
   Invoice,
   LegalEntity,
   SupplierAgreement,
@@ -63,6 +64,7 @@ export interface Workspace {
   catalogItems: CatalogItem[]
   openOrders: OpenPurchaseOrder[]
   certificates: Certificate[]
+  attachments: Attachment[]
   audit: AuditEvent[]
   /** Derived financial views (as of the demo "today"). */
   invoiceFin: Map<string, InvoiceFinancials>
@@ -136,6 +138,7 @@ export function deriveWorkspace(ds: Dataset): Workspace {
     catalogItems: ds.catalogItems,
     openOrders: ds.openOrders,
     certificates: ds.certificates,
+    attachments: ds.attachments,
     audit: ds.audit,
     invoiceFin: new Map(ds.invoices.map((i) => [i.id, invoiceFinancials(ds, i, DEMO_TODAY)])),
     obligationFin: new Map(ds.obligations.map((o) => [o.id, obligationFinancials(ds, o, DEMO_TODAY)])),

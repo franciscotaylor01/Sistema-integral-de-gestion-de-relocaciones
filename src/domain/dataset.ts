@@ -8,6 +8,7 @@ import type {
   CatalogItem,
   OpenPurchaseOrder,
   Certificate,
+  Attachment,
   LegalEntity,
   SupplierAgreement,
   SupplierObligation,
@@ -32,7 +33,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -65,6 +66,8 @@ export interface Dataset {
   catalogItems: CatalogItem[]
   openOrders: OpenPurchaseOrder[]
   certificates: Certificate[]
+  /** Phase 4.7 — document evidence metadata (files live in IndexedDB). */
+  attachments: Attachment[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

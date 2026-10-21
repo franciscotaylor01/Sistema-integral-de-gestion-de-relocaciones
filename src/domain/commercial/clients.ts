@@ -1,4 +1,4 @@
-import type { BillingMilestone, Client, ClientContact, ClientStatus, CountryCode, CurrencyCode, PoMode } from '@/types/domain'
+import type { BillingMilestone, Client, ClientContact, ClientStatus, CountryCode, CurrencyCode, PaymentDayType, PoMode } from '@/types/domain'
 import { logActivityGlobal } from './activity'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
@@ -34,6 +34,8 @@ export interface ClientInput {
   /** Phase 4.6: PO modality and mandatory certification. */
   poMode?: PoMode
   requiresCertificate?: boolean
+  /** Phase 4.7: payment term in calendar (default) or business days. */
+  paymentDayType?: PaymentDayType
   contacts: ContactInput[]
   notes?: string
 }
@@ -106,6 +108,7 @@ function fromInput(input: ClientInput, ctx: DomainContext): Omit<Client, 'id' | 
       quoteValidityDays: input.quoteValidityDays,
       poMode: input.poMode ?? (input.requiresPurchaseOrder ? 'project' : 'none'),
       requiresCertificate: input.requiresCertificate || undefined,
+      paymentDayType: input.paymentDayType === 'business' ? 'business' : undefined,
     },
     notes: input.notes?.trim() || undefined,
   }

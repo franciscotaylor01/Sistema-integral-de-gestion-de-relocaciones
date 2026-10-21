@@ -1,6 +1,6 @@
 import type { SettlementSignal } from '@/domain/finance/settlements'
 import type { StatusMeta } from '@/config/catalogs'
-import type { CollectionActionKind, CostCategory, InvoiceKind, PaymentCondition, PaymentMethod, SettlementMethod, SettlementRelease, SupplierKind } from '@/types/domain'
+import type { CollectionActionKind, CostCategory, InvoiceKind, PaymentCondition, PaymentMethod, SettlementMethod, SettlementRelease, SupplierKind, WithholdingType } from '@/types/domain'
 
 export const invoiceKindLabel: Record<InvoiceKind, string> = {
   A: 'Factura A',
@@ -46,7 +46,7 @@ export const supplierKindLabel: Record<SupplierKind, string> = {
 
 /** Shown wherever invoices are issued: SIGR records are not fiscal documents. */
 export const FISCAL_DISCLAIMER =
-  'Registro interno de SIGR (demo). No es un comprobante fiscal: no se emite ni autoriza ante ARCA y no tiene CAE. Si la factura se emitió fuera de SIGR, cargá su número como referencia externa.'
+  'Registro interno de SIGR. No es un comprobante fiscal: SIGR no emite ni autoriza ante ARCA. La factura se emite en el sistema externo y luego se registra con «Confirmar emisión externa».'
 
 /** Derived settlement status (never stored): colour + meaning. */
 export const settlementSignalMeta: Record<SettlementSignal, StatusMeta> = {
@@ -65,4 +65,11 @@ export const settlementMethodLabel: Record<SettlementMethod, string> = {
 export const settlementReleaseLabel: Record<SettlementRelease, string> = {
   'after-collection': 'Proporcional a lo cobrado al cliente',
   manual: 'Otra condición acordada (habilitación manual)',
+}
+
+export const withholdingTypeLabel: Record<WithholdingType, string> = {
+  iva: 'IVA',
+  ganancias: 'Ganancias',
+  iibb: 'Ingresos Brutos',
+  other: 'Otra retención',
 }

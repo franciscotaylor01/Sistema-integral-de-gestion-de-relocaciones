@@ -46,6 +46,8 @@ import { ObligationDetailModal, SupplierPaymentDetailModal, SupplierPaymentModal
 import { ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
 import { CostModal, ObligationModal, SupplierFormModal } from './modals/SupplierModals'
 import { SettlementsView } from './settlements/SettlementsView'
+import { receivableColumns, receivableStatusMeta } from './components/receivableColumns'
+import { receivableRows, type ReceivableStatus } from '@/domain/finance/receivables'
 import { OpenOrdersPanel } from '@/features/catalog/CatalogPanels'
 import { certificateColumns } from '@/features/catalog/certificateColumns'
 import { certificateStatusMeta } from '@/features/catalog/meta'
@@ -55,7 +57,7 @@ import { obligationOutstanding, outstandingOf, receivablesAging, summarizeLedger
 const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'oc-abiertas', 'certificados', 'pendientes'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
-const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes', 'oc-abiertas', 'certificados']
+const COMMERCIAL_VIEWS: View[] = ['cobranzas', 'comercial', 'cotizaciones', 'ordenes', 'pendientes', 'oc-abiertas', 'certificados']
 const SEARCHABLE: View[] = ['liquidaciones', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
@@ -104,7 +106,7 @@ export function FinancePage() {
       ),
     [workspace],
   )
-  const hasFilters = Boolean(currency || status || scope || q || client)
+  const hasFilters = Boolean(currency || status || scope || q || client || params.get('venc'))
 
   return (
     <div className="pt-[5px]">
@@ -134,7 +136,7 @@ export function FinancePage() {
               items={[
                 { value: 'resumen', label: 'Resumen' },
                 { value: 'facturas', label: 'Facturas', count: workspace.invoices.length },
-                { value: 'cobranzas', label: 'Cuentas por cobrar', count: workspace.invoices.filter((i) => i.lifecycle === 'issued' && outstandingOf(workspace, i) > 0).length },
+                { value: 'cobranzas', label: 'Cobranzas', count: workspace.invoices.filter((i) => i.lifecycle === 'issued' && outstandingOf(workspace, i) > 0).length },
                 { value: 'proveedores', label: 'Proveedores', count: workspace.obligations.filter((o) => obligationOutstanding(workspace, o) > 0 && o.lifecycle !== 'cancelled').length },
                 { value: 'pagos', label: 'Cobros y pagos', count: workspace.receipts.length + workspace.supplierPayments.length },
                 { value: 'costos', label: 'Costos y gastos' },
@@ -180,6 +182,28 @@ export function FinancePage() {
                 onChange={(v) => setParam('estado', v)}
                 options={(Object.keys(purchaseOrderStatusMeta) as PurchaseOrderStatus[]).map((s) => ({ value: s, label: purchaseOrderStatusMeta[s].label }))}
               />
+            )}
+            {view === 'cobranzas' && (
+              <>
+                <FilterSelect
+                  size="sm"
+                  label="Estado"
+                  value={status}
+                  onChange={(v) => setParam('estado', v)}
+                  options={(Object.keys(receivableStatusMeta) as ReceivableStatus[]).map((s) => ({ value: s, label: receivableStatusMeta[s].label }))}
+                />
+                <FilterSelect
+                  size="sm"
+                  label="Vencimiento"
+                  value={params.get('venc') ?? ''}
+                  onChange={(v) => setParam('venc', v)}
+                  options={[
+                    { value: 'overdue', label: 'Vencidas' },
+                    { value: '7', label: 'Próximos 7 días' },
+                    { value: '30', label: 'Próximos 30 días' },
+                  ]}
+                />
+              </>
             )}
             {view === 'certificados' && (
               <FilterSelect
@@ -254,7 +278,7 @@ export function FinancePage() {
               <motion.div variants={staggerVariants} initial="hidden" animate="show" className="flex flex-col gap-[24px]">
                 {view === 'resumen' && <SummaryView workspace={workspace} currency={currency} currencies={usedCurrencies} />}
                 {view === 'facturas' && <InvoicesView workspace={workspace} currency={currency} status={status} q={q} />}
-                {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} />}
+                {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} client={client} status={status} due={params.get('venc') ?? ''} />}
                 {view === 'proveedores' && <SuppliersView workspace={workspace} currency={currency} status={status} q={q} />}
                 {view === 'pagos' && <PaymentsView workspace={workspace} currency={currency} direction={status} q={q} />}
                 {view === 'costos' && <CostsView workspace={workspace} currency={currency} scope={scope} q={q} />}
@@ -391,21 +415,30 @@ function InvoicesView({ workspace: ws, currency, status, q = '' }: ViewProps & {
   )
 }
 
-function ReceivablesView({ workspace: ws, currency, q = '' }: ViewProps) {
+function ReceivablesView({ workspace: ws, currency, q = '', client, status, due }: ViewProps & { client: string; status: string; due: string }) {
   const [recording, setRecording] = useState(false)
   const [receiptId, setReceiptId] = useState<string>()
-  const open = ws.invoices
-    .filter((i) => i.lifecycle === 'issued' && outstandingOf(ws, i) > 0 && (!currency || i.currency === currency) && invoiceMatches(ws, q)(i))
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-  const credits = ws.receipts.filter((r) => receiptUnallocated(r) > 0 && (!currency || r.currency === currency))
+  const rows = receivableRows(ws.dataset, DEMO_TODAY).filter((r) => {
+    const i = r.invoice
+    if (currency && r.currency !== currency) return false
+    if (client && i.clientId !== client) return false
+    if (status ? r.status !== status : r.status === 'cancelled' || r.status === 'reconciled') return false
+    if (due === 'overdue' && r.daysToDue >= 0) return false
+    if (due === '7' && (r.daysToDue < 0 || r.daysToDue > 7)) return false
+    if (due === '30' && (r.daysToDue < 0 || r.daysToDue > 30)) return false
+    return invoiceMatches(ws, q)(i)
+  })
+  const pending: MoneyByCurrency = {}
+  for (const r of rows) if (r.status !== 'cancelled') pending[r.currency] = addMoney(pending[r.currency] ?? 0, r.outstanding)
+  const credits = ws.receipts.filter((r) => receiptUnallocated(r) > 0 && (!currency || r.currency === currency) && (!client || r.clientId === client))
   return (
     <>
       <AgingStrip workspace={ws} currency={currency} />
       <Card aria-labelledby="fin-receivables" className="px-[19px] pb-[19px] pt-[19px]">
         <SectionTitle
           id="fin-receivables"
-          title="Cuentas por cobrar"
-          description="Facturas emitidas con saldo pendiente, ordenadas por vencimiento. Abrí una factura para registrar gestiones de cobranza."
+          title="Cobranzas · pendientes de cobro"
+          description={`Solo facturas con emisión registrada. Saldo = facturado − cobros − retenciones documentadas. Pendiente: ${joinMoney(pending)}`}
           action={
             <Button size="sm" onClick={() => setRecording(true)}>
               <HandCoins aria-hidden className="size-[15px]" strokeWidth={2} />
@@ -416,20 +449,21 @@ function ReceivablesView({ workspace: ws, currency, q = '' }: ViewProps) {
         <DataTable
           className="mt-[18px]"
           caption="Cuentas por cobrar"
-          rows={open}
-          getRowId={(i) => i.id}
-          minWidth={1180}
-          columns={invoiceColumns(ws)}
-          empty={<EmptyState icon={ReceiptText} title="Sin saldos pendientes" description="Todas las facturas emitidas están cobradas." />}
+          rows={rows}
+          getRowId={(r) => r.invoice.id}
+          minWidth={1400}
+          dense
+          columns={receivableColumns(ws)}
+          empty={<EmptyState icon={ReceiptText} title="Sin cuentas por cobrar para los filtros elegidos" description="Usá el filtro Estado para ver facturas conciliadas o anuladas." />}
         />
       </Card>
       {credits.length > 0 && (
         <Card aria-labelledby="fin-credits" className="px-[19px] pb-[19px] pt-[19px]">
-          <SectionTitle id="fin-credits" title="Saldos a favor de clientes" description="Cobros con importe sin aplicar. Pueden aplicarse a facturas del mismo cliente y moneda." />
+          <SectionTitle id="fin-credits" title="Cobros sin aplicar" description="Saldos a favor o diferencias pendientes de conciliar. Pueden aplicarse a facturas del mismo cliente y moneda." />
           <DataTable className="mt-[18px]" caption="Cobros con saldo sin aplicar" rows={credits} getRowId={(r) => r.id} minWidth={900} columns={receiptColumns(ws, { onOpen: setReceiptId })} />
         </Card>
       )}
-      <RecordReceiptModal open={recording} onClose={() => setRecording(false)} workspace={ws} />
+      <RecordReceiptModal open={recording} onClose={() => setRecording(false)} workspace={ws} clientId={client || undefined} />
       <ReceiptDetailModal receiptId={receiptId} onClose={() => setReceiptId(undefined)} workspace={ws} />
     </>
   )

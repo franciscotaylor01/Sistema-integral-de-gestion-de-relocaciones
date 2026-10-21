@@ -6,11 +6,13 @@ import { DateInput, Field, FormError, SelectInput, TextArea, TextInput } from '@
 import { Modal } from '@/components/ui/Modal'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
-import { collectionActionLabel, paymentMethodLabel } from '@/config/finance'
+import { collectionActionLabel, paymentMethodLabel, withholdingTypeLabel } from '@/config/finance'
 import { randomId } from '@/domain/context'
 import { receiptUnallocated } from '@/domain/finance/derive'
 import { addMoney, subMoney } from '@/domain/finance/money'
-import type { AllocationInput, ReceiptInput } from '@/domain/finance/receipts'
+import type { AllocationInput, ReceiptInput, WithholdingInput } from '@/domain/finance/receipts'
+import { AttachmentsPanel } from '../attachments/AttachmentsPanel'
+import { WithholdingsEditor } from './WithholdingsEditor'
 import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
@@ -112,6 +114,7 @@ function RecordReceiptForm({ onClose, workspace: ws, clientId: presetClient, inv
     reference: '',
     notes: '',
     allocations: preset ? [{ invoiceId: preset.id, amount: ws.invoiceFin.get(preset.id)!.outstanding }] : [],
+    withholdings: [],
   }))
   const patch = (p: Partial<ReceiptInput>) => setInput((i) => ({ ...i, ...p }))
   const allocated = addMoney(...input.allocations.map((a) => (Number.isFinite(a.amount) ? a.amount : 0)))
@@ -202,6 +205,12 @@ function RecordReceiptForm({ onClose, workspace: ws, clientId: presetClient, inv
         {errors.allocations && <FormError message={errors.allocations} />}
         <AllocationEditor ws={ws} clientId={input.clientId} currency={input.currency} allocations={input.allocations} onChange={(a) => patch({ allocations: a })} errors={errors} />
       </div>
+      <div className="rounded-panel bg-surface-muted p-[10px]">
+        <p className="text-[13.5px] font-medium text-ink-secondary">Retenciones documentadas</p>
+        <p className="mb-[8px] text-[12.5px] text-muted">Cargá los importes tal como figuran en el detalle recibido. No son dinero depositado ni gastos. Si falta información, dejá la diferencia pendiente de conciliar.</p>
+        {errors.withholdings && <FormError message={errors.withholdings} />}
+        <WithholdingsEditor ws={ws} clientId={input.clientId} currency={input.currency} items={input.withholdings ?? []} onChange={(w) => patch({ withholdings: w })} errors={errors} />
+      </div>
       <Field label="Notas">{(p) => <TextArea {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={1000} className="min-h-[64px]" />}</Field>
       <div className="sticky bottom-0 -mx-[22px] -mb-[20px] flex justify-end gap-[10px] border-t border-line bg-surface px-[22px] py-[14px]">
         <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
@@ -233,6 +242,7 @@ function ReceiptDetail({ receiptId, ws, onClose }: { receiptId: string; ws: Work
   const { run, busy, errors, formError } = useCommand()
   const [reversing, setReversing] = useState(false)
   const [allocations, setAllocations] = useState<AllocationInput[]>([])
+  const [newWithholdings, setNewWithholdings] = useState<WithholdingInput[]>([])
   const free = receiptUnallocated(r)
   const rate = r.fx?.exchangeRateId ? ws.exchangeRates.find((x) => x.id === r.fx!.exchangeRateId) : undefined
 
@@ -287,10 +297,58 @@ function ReceiptDetail({ receiptId, ws, onClose }: { receiptId: string; ws: Work
           ))}
         </ul>
       </div>
+      <div>
+        <p className="text-[13.5px] font-medium text-ink-secondary">Retenciones documentadas</p>
+        <ul className="mt-[8px] flex flex-col gap-[6px]">
+          {(r.withholdings ?? []).length === 0 && <li className="text-[13.5px] text-muted">Sin retenciones cargadas.</li>}
+          {(r.withholdings ?? []).map((w) => (
+            <li key={w.id} className="rounded-[12px] bg-surface-muted px-[12px] py-[9px] text-[14px]">
+              <span className="flex justify-between gap-2">
+                <span>
+                  <span className="font-medium">{withholdingTypeLabel[w.type]}</span>
+                  <span className="text-muted">
+                    {' · '}
+                    {ws.invoiceById.get(w.invoiceId)?.externalRef ?? ws.invoiceById.get(w.invoiceId)?.number}
+                    {w.jurisdiction && ` · ${w.jurisdiction}`}
+                    {w.certificateRef && ` · cert. ${w.certificateRef}`}
+                  </span>
+                </span>
+                <span className="tabular font-medium">{money(w.amount, r.currency)}</span>
+              </span>
+              {w.notes && <span className="block text-[12.5px] text-muted">{w.notes}</span>}
+              <div className="mt-[6px]">
+                <AttachmentsPanel ws={ws} entity="withholding" entityId={w.id} compact />
+              </div>
+            </li>
+          ))}
+        </ul>
+        {r.status === 'recorded' && (
+          <div className="mt-[10px] flex flex-col gap-[8px]">
+            {errors.withholdings && <FormError message={errors.withholdings} />}
+            <WithholdingsEditor ws={ws} clientId={r.clientId} currency={r.currency} items={newWithholdings} onChange={setNewWithholdings} errors={errors} />
+            {newWithholdings.length > 0 && (
+              <Button
+                size="sm"
+                className="self-start"
+                disabled={busy}
+                onClick={async () => {
+                  if (await run(() => actions.addReceiptWithholdings(r.id, newWithholdings), { title: 'Retenciones registradas' })) setNewWithholdings([])
+                }}
+              >
+                Guardar retenciones
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+      <div>
+        <p className="mb-[8px] text-[13.5px] font-medium text-ink-secondary">Comprobante del cobro</p>
+        <AttachmentsPanel ws={ws} entity="receipt" entityId={r.id} />
+      </div>
       {free > 0 && (
         <div className="flex flex-col gap-[10px]">
           <p className="text-[13.5px]">
-            Saldo a favor del cliente: <span className="tabular font-semibold">{money(free, r.currency)}</span>
+            Sin aplicar (saldo a favor o diferencia pendiente de conciliar): <span className="tabular font-semibold">{money(free, r.currency)}</span>
           </p>
           <FormError message={formError} />
           {errors.allocations && <FormError message={errors.allocations} />}

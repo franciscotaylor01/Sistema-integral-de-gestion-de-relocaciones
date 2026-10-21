@@ -151,6 +151,7 @@ export function withCatalogSeed(ds: Dataset): Dataset {
     catalogItems: ds.catalogItems?.length ? ds.catalogItems : seedCatalogItems,
     openOrders: ds.openOrders ?? [],
     certificates: ds.certificates ?? [],
+    attachments: ds.attachments ?? [],
   }
   if (next.clients.some((c) => c.id === PV)) return next
   const clientsOk = next.clients.some((c) => c.id === 'cli_nordvik')

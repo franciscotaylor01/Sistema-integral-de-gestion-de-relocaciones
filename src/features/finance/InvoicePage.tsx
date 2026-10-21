@@ -9,15 +9,13 @@ import { Card } from '@/components/ui/Card'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { DataTable } from '@/components/ui/DataTable'
 import { Fact } from '@/components/ui/Fact'
-import { Field, TextInput } from '@/components/ui/form'
-import { Modal } from '@/components/ui/Modal'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { SectionTitle } from '@/components/ui/SectionTitle'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Timeline } from '@/components/ui/Timeline'
 import { invoiceStatusMeta } from '@/config/catalogs'
-import { collectionActionLabel, FISCAL_DISCLAIMER, invoiceKindLabel, paymentMethodLabel } from '@/config/finance'
+import { collectionActionLabel, FISCAL_DISCLAIMER, invoiceKindLabel, paymentMethodLabel, withholdingTypeLabel } from '@/config/finance'
 import { certificatePath, clientPath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { lineSubtotal } from '@/domain/finance/derive'
@@ -32,6 +30,11 @@ import { staggerVariants } from '@/lib/motion'
 import { activityKindMeta } from '@/features/projects/activityMeta'
 import type { Invoice, InvoiceLine } from '@/types/domain'
 import { InvoiceForm } from './modals/InvoiceForm'
+import { DueDateModal, EmissionModal, FiscalCard, InvoiceHistoryCard, PrepareInvoiceCard, type EmissionMode } from './emission/EmissionPanels'
+import { AttachmentsPanel } from './attachments/AttachmentsPanel'
+import { receivableRow } from '@/domain/finance/receivables'
+import { DEMO_TODAY } from '@/config/brand'
+import type { WithholdingType } from '@/types/domain'
 import { CollectionActionModal, ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
 
 export function InvoicePage() {
@@ -72,9 +75,11 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
   const f = ws.invoiceFin.get(inv.id)!
   const isDraft = inv.lifecycle === 'draft'
   const [input, setInput] = useState<InvoiceInput>(() => toInput(inv))
-  const [dialog, setDialog] = useState<'issue' | 'cancel' | 'receipt' | 'action' | null>(null)
+  const [dialog, setDialog] = useState<'cancel' | 'receipt' | 'action' | null>(null)
   const [receiptId, setReceiptId] = useState<string>()
-  const [externalRef, setExternalRef] = useState(inv.externalRef ?? '')
+  const [emission, setEmission] = useState<EmissionMode>()
+  const [dueOpen, setDueOpen] = useState(false)
+  const rec = receivableRow(ws.dataset, inv, DEMO_TODAY)
   const receipts = ws.receipts.filter((r) => r.allocations.some((a) => a.invoiceId === inv.id))
   const followUps = ws.collectionActions.filter((c) => c.invoiceId === inv.id)
   const money = (v: number) => formatCurrency(v, inv.currency, { decimals: 2 })
@@ -107,7 +112,7 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
         }
         actions={
           <>
-            {inv.lifecycle !== 'cancelled' && f.paid === 0 && (
+            {inv.lifecycle !== 'cancelled' && f.paid === 0 && f.withheld === 0 && (
               <Button variant="outline" onClick={() => setDialog('cancel')}>
                 <Ban aria-hidden className="size-[16px]" strokeWidth={1.9} />
                 Anular
@@ -123,11 +128,11 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
                   disabled={busy}
                   onClick={async () => {
                     if (!(await run(() => actions.updateInvoiceDraft(inv.id, input)))) return
-                    setDialog('issue')
+                    setEmission('confirm')
                   }}
                 >
                   <Send aria-hidden className="size-[16px]" strokeWidth={1.9} />
-                  Emitir
+                  Confirmar emisión externa
                 </Button>
               </>
             )}
@@ -232,17 +237,30 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
           </Card>
         </div>
 
-        <div className="flex flex-col gap-[24px]">
+        {isDraft && (
+          <div className="min-w-0 xl:col-span-2">
+            <PrepareInvoiceCard ws={ws} inv={inv} />
+          </div>
+        )}
+        <div className="flex flex-col gap-[24px] xl:col-start-3 xl:row-span-2 xl:row-start-1">
           <Card aria-labelledby="inv-summary" className="px-[20px] pb-[20px] pt-[20px]">
-            <SectionTitle id="inv-summary" size="sm" title="Cobranza" />
+            <SectionTitle id="inv-summary" size="sm" title="Conciliación" description={isDraft ? 'La factura todavía no fue emitida: no genera cuenta por cobrar.' : undefined} />
             <dl className="mt-[14px] grid grid-cols-2 gap-x-4 gap-y-[14px]">
-              <Fact label="Total">
+              <Fact label="Total facturado">
                 <span className="tabular">{money(f.total)}</span>
               </Fact>
-              <Fact label="Cobrado">
+              <Fact label="Cobros bancarios">
                 <span className="tabular text-success">{money(f.paid)}</span>
               </Fact>
-              <Fact label="Saldo">
+              <Fact label="Retenciones documentadas">
+                <span className="tabular">{money(f.withheld)}</span>
+                {f.withheld > 0 && (
+                  <span className="block text-[12px] font-normal text-muted">
+                    {(Object.entries(rec.withheldByType) as [WithholdingType, number][]).map(([t, v]) => `${withholdingTypeLabel[t]} ${money(v)}`).join(' · ')}
+                  </span>
+                )}
+              </Fact>
+              <Fact label="Saldo comercial">
                 <span className="tabular">{money(f.outstanding)}</span>
               </Fact>
               <Fact label="Vencimiento">{formatDate(inv.dueDate)}</Fact>
@@ -256,6 +274,16 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
             </dl>
             {!isDraft && <p className="mt-[14px] rounded-[14px] bg-surface-muted px-[12px] py-[10px] text-[12px] leading-[1.5] text-muted">{FISCAL_DISCLAIMER}</p>}
           </Card>
+          {!isDraft && <FiscalCard ws={ws} inv={inv} onEmission={setEmission} onDue={() => setDueOpen(true)} />}
+          {!isDraft && (
+            <Card aria-labelledby="inv-docs" className="px-[20px] pb-[18px] pt-[20px]">
+              <SectionTitle id="inv-docs" size="sm" title="Comprobantes adjuntos" />
+              <div className="mt-[12px]">
+                <AttachmentsPanel ws={ws} entity="invoice" entityId={inv.id} />
+              </div>
+            </Card>
+          )}
+          <InvoiceHistoryCard ws={ws} inv={inv} />
           <Card aria-labelledby="inv-receipts" className="px-[20px] pb-[18px] pt-[20px]">
             <SectionTitle id="inv-receipts" size="sm" title="Cobros aplicados" />
             {receipts.length === 0 ? (
@@ -304,34 +332,8 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
         </div>
       </motion.div>
 
-      <Modal open={dialog === 'issue'} onClose={() => setDialog(null)} title={`Emitir ${inv.number}`} size="sm">
-        {dialog === 'issue' && (
-          <form
-            className="flex flex-col gap-[14px]"
-            onSubmit={async (e) => {
-              e.preventDefault()
-              const ok = await run(() => actions.issueInvoice(inv.id, externalRef), { title: 'Factura emitida', description: 'Queda pendiente de cobro.' })
-              if (ok) setDialog(null)
-            }}
-          >
-            <p className="rounded-[14px] bg-info-soft px-[14px] py-[11px] text-[13px] leading-[1.5] text-info">{FISCAL_DISCLAIMER}</p>
-            <Field label="N.º de comprobante externo (opcional)" error={errors.externalRef}>
-              {(p) => <TextInput {...p} data-autofocus value={externalRef} onChange={(e) => setExternalRef(e.target.value)} maxLength={40} />}
-            </Field>
-            <p className="text-[13.5px] text-ink-secondary">
-              Total a cobrar: <span className="tabular font-semibold text-ink">{money(f.total)}</span>. Emitir no registra ningún cobro.
-            </p>
-            <div className="flex justify-end gap-[10px] border-t border-line pt-[14px]">
-              <Button size="sm" variant="secondary" onClick={() => setDialog(null)} disabled={busy}>
-                Cancelar
-              </Button>
-              <Button size="sm" type="submit" disabled={busy}>
-                Confirmar emisión
-              </Button>
-            </div>
-          </form>
-        )}
-      </Modal>
+      <EmissionModal ws={ws} inv={inv} mode={emission} onClose={() => setEmission(undefined)} />
+      <DueDateModal inv={inv} open={dueOpen} onClose={() => setDueOpen(false)} />
       <ConfirmDialog
         open={dialog === 'cancel'}
         onClose={() => setDialog(null)}

@@ -1,5 +1,6 @@
+import { validTerms } from '../finance/terms'
 import { getServiceType } from '@/config/serviceCatalog'
-import type { CurrencyCode, PurchaseOrder } from '@/types/domain'
+import type { CurrencyCode, PurchaseOrder, PaymentTerms } from '@/types/domain'
 import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
@@ -24,6 +25,8 @@ export interface PurchaseOrderInput {
   authorizedAmount: number
   allocations: AllocationInput[]
   notes?: string
+  /** Phase 4.7: payment condition stated on the PO. */
+  paymentTerms?: PaymentTerms
 }
 
 /**
@@ -62,6 +65,7 @@ export function validatePurchaseOrder(ds: Dataset, input: PurchaseOrderInput, ct
   const f: Record<string, string> = {}
   const project = findById(ds.projects, input.projectId)
   if (!project) return { projectId: 'El proyecto no existe.' }
+  if (input.paymentTerms && !validTerms(input.paymentTerms)) f.paymentTerms = 'Plazo entre 0 y 365 días.'
   if (!input.clientPoNumber.trim()) f.clientPoNumber = 'Ingresá el número de OC del cliente.'
   else if (
     ds.purchaseOrders.some((po) => po.id !== poId && po.clientId === project.clientId && po.status === 'active' && samePoNumber(po.clientPoNumber, input.clientPoNumber))
@@ -145,6 +149,7 @@ export function createPurchaseOrder(ds: Dataset, input: PurchaseOrderInput, requ
     status: 'active',
     documentRef: `DOCREF-${internalNumber}`,
     notes: input.notes?.trim() || undefined,
+    paymentTerms: input.paymentTerms,
     createdAt: ctx.now(),
     createdBy: ctx.actorId,
   }
@@ -190,6 +195,7 @@ export function updatePurchaseOrder(ds: Dataset, poId: string, input: PurchaseOr
       authorizedAmount: round2(input.authorizedAmount),
       allocations: cleanAllocations(input.allocations, ctx),
       notes: input.notes?.trim() || undefined,
+      paymentTerms: input.paymentTerms,
     })),
   }
   return logActivity(next, { projectId: po.projectId, kind: 'commercial', message: `OC ${input.clientPoNumber.trim()} actualizada.` }, ctx)

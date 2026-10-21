@@ -51,10 +51,10 @@ export const serviceStatusMeta: Record<ServiceStatus, StatusMeta> = {
 }
 
 export const invoiceStatusMeta: Record<InvoiceStatus, StatusMeta> = {
-  draft: { label: 'Borrador', tone: 'neutral' },
-  issued: { label: 'Emitida', tone: 'info' },
-  'partially-paid': { label: 'Cobro parcial', tone: 'warning' },
-  paid: { label: 'Cobrada', tone: 'success' },
+  draft: { label: 'Preparada · sin emitir', tone: 'neutral' },
+  issued: { label: 'Pendiente de cobro', tone: 'info' },
+  'partially-paid': { label: 'Parcialmente conciliada', tone: 'warning' },
+  paid: { label: 'Conciliada', tone: 'success' },
   overdue: { label: 'Vencida', tone: 'danger' },
   cancelled: { label: 'Anulada', tone: 'neutral' },
 }

@@ -16,3 +16,6 @@ export function randomId(prefix: string): string {
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   return `${prefix}_${uuid}`
 }
+
+/** Business-calendar timestamp: the domain date (ctx.today) with the time of day, so record dates never mix calendars. */
+export const businessStamp = (ctx: Pick<DomainContext, 'today' | 'now'>) => `${ctx.today()}T${ctx.now().slice(11, 19) || '00:00:00'}`

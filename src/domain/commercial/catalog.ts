@@ -1,4 +1,6 @@
 import { getServiceType } from '@/config/serviceCatalog'
+import type { PaymentTerms } from '@/types/domain'
+import { validTerms } from '../finance/terms'
 import type { CatalogItem, Client, CommercialPolicy, CurrencyCode, OpenOrderItem, OpenOrderStatus, OpenPurchaseOrder, PoMode, PriceUnit, ProjectRecord, ServiceItem } from '@/types/domain'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
@@ -90,6 +92,8 @@ export interface OpenOrderInput {
   validTo?: string
   conditions?: string
   items: Omit<OpenOrderItem, 'id'>[]
+  /** Phase 4.7: payment condition stated on the open PO. */
+  paymentTerms?: PaymentTerms
 }
 
 export const openOrderLive = (o: OpenPurchaseOrder, date: string) => o.status === 'active' && o.validFrom <= date && (!o.validTo || o.validTo >= date)
@@ -109,6 +113,7 @@ export function validateOpenOrder(ds: Dataset, input: OpenOrderInput, id?: strin
   if (!isIsoDate(input.validFrom)) f.validFrom = 'Fecha inválida.'
   if (input.validTo && (!isIsoDate(input.validTo) || input.validTo < input.validFrom)) f.validTo = 'La vigencia no puede terminar antes de empezar.'
   if (!input.items.length) f.items = 'Autorizá al menos un servicio o subservicio.'
+  if (input.paymentTerms && !validTerms(input.paymentTerms)) f.paymentTerms = 'Plazo entre 0 y 365 días.'
   const seen = new Set<string>()
   input.items.forEach((it, i) => {
     const key = `${it.serviceTypeId}|${it.catalogItemId ?? ''}`
@@ -138,6 +143,7 @@ export function createOpenOrder(ds: Dataset, input: OpenOrderInput, requestId: s
     validTo: input.validTo || undefined,
     status: 'active',
     conditions: input.conditions?.trim() || undefined,
+    paymentTerms: input.paymentTerms,
     items: input.items.map((it) => ({ ...it, id: ctx.newId('oci'), catalogItemId: it.catalogItemId || undefined })),
     documentRef: `DOCREF-${id}`,
     createdAt: ctx.now(),

@@ -20,10 +20,12 @@ import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
 import { createCatalogItem, createOpenOrder, setOfferedServices, setOpenOrderStatus, setProjectException, updateCatalogItem } from '@/domain/commercial/catalog'
 import { approveCertificate, createCertificate, rejectCertificate, submitCertificate } from '@/domain/commercial/certificates'
 import { approvePriceEntry } from '@/domain/commercial/pricing'
+import { changeInvoiceDueDate, confirmInvoiceEmission, correctFiscalData, recordFiscalData } from '@/domain/finance/emission'
+import { addAttachment } from '@/domain/finance/attachments'
 import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation } from '@/domain/finance/settlements'
 import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
 import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
-import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt } from '@/domain/finance/receipts'
+import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt, addReceiptWithholdings } from '@/domain/finance/receipts'
 import { applySupplierAdvance, recordSupplierPayment, reverseSupplierPayment } from '@/domain/finance/supplierPayments'
 import { createAgreement, createSupplier, updateSupplier } from '@/domain/finance/suppliers'
 import { addProcedure, updateProcedure } from '@/domain/procedures'
@@ -198,6 +200,12 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     approveCertificate: (id, input) => simple((ds) => approveCertificate(ds, id, input, ctx)),
     rejectCertificate: (id, reason) => simple((ds) => rejectCertificate(ds, id, reason, ctx)),
     setProjectException: (id, ex) => simple((ds) => setProjectException(ds, id, ex, ctx)),
+    confirmInvoiceEmission: (id, input) => simple((ds) => confirmInvoiceEmission(ds, id, input, ctx)),
+    recordFiscalData: (id, input) => simple((ds) => recordFiscalData(ds, id, input, ctx)),
+    correctFiscalData: (id, input, reason) => simple((ds) => correctFiscalData(ds, id, input, reason, ctx)),
+    changeInvoiceDueDate: (id, date, reason) => simple((ds) => changeInvoiceDueDate(ds, id, date, reason, ctx)),
+    addReceiptWithholdings: (id, items) => simple((ds) => addReceiptWithholdings(ds, id, items, ctx)),
+    addAttachment: (input) => run((ds) => addAttachment(ds, input, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

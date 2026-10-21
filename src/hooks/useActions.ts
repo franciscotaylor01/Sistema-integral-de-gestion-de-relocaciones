@@ -88,6 +88,12 @@ export function useActions(): Commands {
       approveCertificate: wrap(dataSource.approveCertificate),
       rejectCertificate: wrap(dataSource.rejectCertificate),
       setProjectException: wrap(dataSource.setProjectException),
+      confirmInvoiceEmission: wrap(dataSource.confirmInvoiceEmission),
+      recordFiscalData: wrap(dataSource.recordFiscalData),
+      correctFiscalData: wrap(dataSource.correctFiscalData),
+      changeInvoiceDueDate: wrap(dataSource.changeInvoiceDueDate),
+      addReceiptWithholdings: wrap(dataSource.addReceiptWithholdings),
+      addAttachment: wrap(dataSource.addAttachment),
       resetDemoData: wrap(dataSource.resetDemoData),
     }
   }, [])

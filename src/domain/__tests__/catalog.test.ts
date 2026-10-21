@@ -7,6 +7,11 @@ import { projectCommercial } from '@/domain/commercial/traceability'
 import { createInvoiceDraft, issueInvoice, suggestInvoiceLines, type InvoiceInput } from '@/domain/finance/invoices'
 import { addService, updateServiceItems } from '@/domain/services'
 import { fieldsOf, seed, testContext } from './helpers'
+import { withCatalogSeed } from '@/data/catalogSeed'
+import { buildBaseSeedDataset } from '@/data/seed'
+
+/** Phase 4.6 data without the Phase 4.7 demo invoice (which bills the approved certificate). */
+const seed46 = () => withCatalogSeed(buildBaseSeedDataset())
 
 const TODAY = '2026-10-19'
 const pvProjects = (ds: Dataset) => ds.projects.filter((p) => p.clientId === 'cli_petrovalle').sort((a, b) => a.code.localeCompare(b.code))
@@ -148,7 +153,7 @@ describe('certificates', () => {
 describe('itemised invoicing with mandatory certificate', () => {
   it('suggests one line per approved certified item and blocks billing it twice', () => {
     const ctx = testContext()
-    let ds = seed()
+    let ds = seed46()
     const [a] = pvProjects(ds)
     const input = invoiceInput(ds, a.id)
     expect(input.lines.map((l) => [l.description, l.quantity, l.unitPrice])).toEqual([
@@ -166,7 +171,7 @@ describe('itemised invoicing with mandatory certificate', () => {
 
   it('requires an approved certificate: uncertified services or lines without certificate are rejected', () => {
     const ctx = testContext()
-    const ds = seed()
+    const ds = seed46()
     const [a] = pvProjects(ds)
     const cuil = svc(ds, a.id, 'cuil-unification')
     const base = invoiceInput(ds, a.id)
@@ -178,7 +183,7 @@ describe('itemised invoicing with mandatory certificate', () => {
 
   it('without certification, item quantities beyond the contract cannot be billed', () => {
     const ctx = testContext()
-    let ds = seed()
+    let ds = seed46()
     ds = { ...ds, clients: ds.clients.map((c) => (c.id === 'cli_petrovalle' ? { ...c, policy: { ...c.policy, requiresCertificate: false } } : c)) }
     const [a] = pvProjects(ds)
     const h = svc(ds, a.id, 'housing')

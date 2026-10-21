@@ -25,6 +25,7 @@ import { formatDate } from '@/lib/dates'
 import { formatMoney } from '@/lib/format'
 import type { CatalogItem, Client, OpenOrderStatus, OpenPurchaseOrder, PriceUnit } from '@/types/domain'
 import { certificateStatusMeta, openOrderStatusMeta, poModeLabel } from './meta'
+import { PaymentTermsFields } from '@/features/finance/components/PaymentTermsFields'
 
 const Footer = ({ onClose, busy, label }: { onClose: () => void; busy: boolean; label: string }) => (
   <div className="flex justify-end gap-[10px] border-t border-line pt-[14px]">
@@ -231,7 +232,12 @@ export function OpenOrdersPanel({ workspace: ws, client }: { workspace: Workspac
                   </span>
                 </summary>
                 <div className="flex flex-col gap-[10px] px-[8px] pb-[10px]">
-                  {o.conditions && <p className="px-[6px] text-[13px] text-ink-secondary">Condiciones: {o.conditions}</p>}
+                  {(o.conditions || o.paymentTerms) && (
+                    <p className="px-[6px] text-[13px] text-ink-secondary">
+                      {o.paymentTerms && `Pago a ${o.paymentTerms.days} días ${o.paymentTerms.dayType === 'business' ? 'hábiles' : 'corridos'} desde la emisión. `}
+                      {o.conditions && `Condiciones: ${o.conditions}`}
+                    </p>
+                  )}
                   <DataTable
                     caption={`Ítems autorizados en OC ${o.number}`}
                     rows={o.items}
@@ -363,6 +369,7 @@ function OpenOrderForm({ ws, client, onClose }: { ws: Workspace; client: Client;
           {(p) => <TextInput {...p} value={input.conditions} onChange={(e) => patch({ conditions: e.target.value })} maxLength={300} />}
         </Field>
       </div>
+      <PaymentTermsFields value={input.paymentTerms} onChange={(t) => patch({ paymentTerms: t })} error={errors.paymentTerms} />
       <div className="flex flex-col gap-[8px] rounded-panel bg-surface-muted p-[8px]">
         {input.items.map((it, i) => (
           <div key={i} className="grid items-end gap-[8px] rounded-[14px] bg-surface p-[10px] sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_140px_auto]">

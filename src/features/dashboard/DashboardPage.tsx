@@ -22,6 +22,7 @@ import { MyTasksCard } from './components/MyTasksCard'
 import { ProfitabilityCard } from './components/ProfitabilityCard'
 import { RecentActivityCard } from './components/RecentActivityCard'
 import { RecentProjectsCard } from './components/RecentProjectsCard'
+import { ReceivablesCard } from './components/ReceivablesCard'
 import { SupplierPaymentsCard } from './components/SupplierPaymentsCard'
 import { UpcomingDeadlinesCard } from './components/UpcomingDeadlinesCard'
 
@@ -69,6 +70,9 @@ export function DashboardPage() {
             </div>
             <div className="min-w-0 md:col-span-2">
               <RecentProjectsCard workspace={workspace} limit={7} />
+            </div>
+            <div className="min-w-0 md:col-span-2 xl:col-span-3">
+              <ReceivablesCard workspace={workspace} />
             </div>
 
             <MyTasksCard workspace={workspace} />
