@@ -303,3 +303,46 @@ function AmountForm({ s, kind, onClose }: { s: ProjectSettlement; kind: AmountKi
     </form>
   )
 }
+
+/* ───────────── Documented fiscal adjustment (Phase 4.9) ───────────── */
+
+export function FiscalAdjustmentModal({ settlement, onClose }: { settlement?: ProjectSettlement; onClose: () => void }) {
+  return (
+    <Modal open={Boolean(settlement)} onClose={onClose} title="Ajuste fiscal documentado" description="Importe que reduce la base distribuible (negativo la aumenta), tal como figura en la documentación. SIGR no calcula impuestos con alícuotas supuestas." size="sm">
+      {settlement && <FiscalForm s={settlement} onClose={onClose} />}
+    </Modal>
+  )
+}
+
+function FiscalForm({ s, onClose }: { s: ProjectSettlement; onClose: () => void }) {
+  const actions = useActions()
+  const { run, busy, errors, formError } = useCommand()
+  const [v, setV] = useState({ concept: '', amount: '', date: DEMO_TODAY, reference: '', reason: '' })
+  return (
+    <form
+      className="flex flex-col gap-[14px]"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (await run(() => actions.addFiscalAdjustment(s.id, { ...v, amount: num(v.amount) }), { title: 'Ajuste fiscal registrado' })) onClose()
+      }}
+    >
+      <FormError message={formError} />
+      <Field label="Concepto" required error={errors.concept}>
+        {(p) => <TextInput {...p} data-autofocus value={v.concept} onChange={(e) => setV((x) => ({ ...x, concept: e.target.value }))} maxLength={120} placeholder="Ej.: IIBB según DDJJ" />}
+      </Field>
+      <div className="grid grid-cols-2 gap-[12px]">
+        <Field label={`Importe (${s.currency})`} required error={errors.amount}>
+          {(p) => <TextInput {...p} inputMode="decimal" value={v.amount} onChange={(e) => setV((x) => ({ ...x, amount: e.target.value }))} />}
+        </Field>
+        <Field label="Fecha" required error={errors.date}>
+          {(p) => <DateInput {...p} value={v.date} onChange={(e) => setV((x) => ({ ...x, date: e.target.value }))} />}
+        </Field>
+      </div>
+      <Field label="Referencia / comprobante">{(p) => <TextInput {...p} value={v.reference} onChange={(e) => setV((x) => ({ ...x, reference: e.target.value }))} maxLength={120} />}</Field>
+      <Field label="Respaldo / motivo" required error={errors.reason}>
+        {(p) => <TextInput {...p} value={v.reason} onChange={(e) => setV((x) => ({ ...x, reason: e.target.value }))} maxLength={200} />}
+      </Field>
+      <Footer onClose={onClose} busy={busy} label="Registrar ajuste" />
+    </form>
+  )
+}

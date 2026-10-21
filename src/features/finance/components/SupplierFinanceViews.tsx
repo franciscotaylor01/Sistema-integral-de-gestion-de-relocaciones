@@ -16,6 +16,8 @@ import { supplierPath } from '@/config/navigation'
 import { addMoney } from '@/domain/finance/money'
 import { advanceInfo, type AdvanceInfo } from '@/domain/finance/supplierPayments'
 import { overheadCategoryOf, overheadSummary, periodOf } from '@/domain/finance/supplierViews'
+import { sharedExpenseInfo, type SharingInput } from '@/domain/finance/batches'
+import { SharingFields } from '../modals/SupplierModals'
 import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
@@ -110,8 +112,10 @@ export function OverheadsView({ ws, currency, q = '' }: { ws: Workspace; currenc
   const [creating, setCreating] = useState(false)
   const [paying, setPaying] = useState<CostRecord>()
   const [period, setPeriod] = useState('')
+  const [sharing, setSharing] = useState<CostRecord>()
   const all = ws.costs.filter((c) => c.scope === 'company' && (!currency || c.currency === currency))
   const periods = [...new Set(all.map(periodOf))].sort().reverse()
+  const pendingDeduction = sum(all.map((c) => ({ currency: c.currency, v: sharedExpenseInfo(ws.dataset, c)?.pending ?? 0 })).filter((x) => x.v > 0))
   const rows = all
     .filter((c) => (!period || periodOf(c) === period) && matches(q, c.description, overheadCategoryOf(c), c.supplierId ? ws.supplierById.get(c.supplierId)?.name : undefined))
     .sort((a, b) => b.date.localeCompare(a.date))
@@ -138,7 +142,7 @@ export function OverheadsView({ ws, currency, q = '' }: { ws: Workspace; currenc
         <SectionTitle
           id="fin-ovh"
           title="Gastos generales"
-          description="Gastos indirectos de la empresa. No pertenecen a proyectos, no se distribuyen entre ellos ni se descuentan de la base de liquidación."
+          description={`Gastos indirectos de la empresa. No pertenecen a proyectos ni se descuentan de la base por proyecto. Los compartidos se deducen a Florencia al liquidar · pendiente de deducir: ${pendingDeduction}`}
           action={
             <Button size="sm" onClick={() => setCreating(true)}>
               <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
@@ -171,6 +175,33 @@ export function OverheadsView({ ws, currency, q = '' }: { ws: Workspace; currenc
               ),
             },
             { id: 'proj', header: 'Proyecto', width: '150px', cell: () => <ProjectRef ws={ws} /> },
+            {
+              id: 'share',
+              header: 'Compartido',
+              width: '200px',
+              cell: (c) => {
+                const info = sharedExpenseInfo(ws.dataset, c)
+                if (!c.sharing)
+                  return (
+                    <button type="button" onClick={() => setSharing(c)} className="text-[12.5px] text-muted underline-offset-2 hover:underline">
+                      No compartido
+                    </button>
+                  )
+                return (
+                  <span className="block text-[12.5px]">
+                    <span className="font-medium">
+                      {c.sharing.partnerPct}% Florencia / {c.sharing.ownerPct}% Eugenia
+                    </span>
+                    {info && <span className="tabular block text-muted">{info.pending > 0 ? `Pendiente de deducir ${formatMoney(info.pending, c.currency)}` : 'Deducido totalmente'}</span>}
+                    {info && info.deducted === 0 && (
+                      <button type="button" onClick={() => setSharing(c)} className="text-ink-secondary underline-offset-2 hover:underline">
+                        Editar reparto
+                      </button>
+                    )}
+                  </span>
+                )
+              },
+            },
             { id: 'sup', header: 'Proveedor', width: '14%', cell: (c) => <span className="block truncate text-ink-secondary">{c.supplierId ? ws.supplierById.get(c.supplierId)?.name : '—'}</span> },
             { id: 'amount', header: 'Importe', className: 'tabular font-medium', cell: (c) => formatMoney(c.amount, c.currency) },
             {
@@ -217,6 +248,9 @@ export function OverheadsView({ ws, currency, q = '' }: { ws: Workspace; currenc
           ]} />
         </Card>
       </div>
+      <Modal open={Boolean(sharing)} onClose={() => setSharing(undefined)} title="Reparto del gasto" description="Porcentajes efectivos de este gasto. Una vez deducido, el reparto no se modifica." size="sm">
+        {sharing && <SharingForm ws={ws} cost={sharing} onClose={() => setSharing(undefined)} />}
+      </Modal>
       <CostModal open={creating} onClose={() => setCreating(false)} workspace={ws} scope="company" />
       <Modal open={Boolean(paying)} onClose={() => setPaying(undefined)} title="Registrar pago del gasto" description="Se actualiza el mismo gasto: no se crea un gasto nuevo." size="sm">
         {paying && <PayOverhead cost={paying} onClose={() => setPaying(undefined)} />}
@@ -252,6 +286,35 @@ function PayOverhead({ cost, onClose }: { cost: CostRecord; onClose: () => void 
         </Button>
         <Button size="sm" type="submit" disabled={busy}>
           Registrar pago
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function SharingForm({ ws, cost, onClose }: { ws: Workspace; cost: CostRecord; onClose: () => void }) {
+  const actions = useActions()
+  const { run, busy, errors, formError } = useCommand()
+  const [value, setValue] = useState<SharingInput | undefined>(cost.sharing)
+  return (
+    <form
+      className="flex flex-col gap-[14px]"
+      onSubmit={async (e) => {
+        e.preventDefault()
+        if (await run(() => actions.setCostSharing(cost.id, value ?? null), { title: 'Reparto guardado' })) onClose()
+      }}
+    >
+      <FormError message={formError} />
+      <p className="text-[13.5px] text-ink-secondary">
+        {cost.description} · <span className="tabular font-medium">{formatMoney(cost.amount, cost.currency)}</span>
+      </p>
+      <SharingFields ws={ws} value={value} onChange={setValue} errors={errors} />
+      <div className="flex justify-end gap-[10px] border-t border-line pt-[14px]">
+        <Button size="sm" variant="secondary" onClick={onClose} disabled={busy}>
+          Cancelar
+        </Button>
+        <Button size="sm" type="submit" disabled={busy}>
+          Guardar
         </Button>
       </div>
     </form>

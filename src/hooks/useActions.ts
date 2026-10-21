@@ -99,6 +99,12 @@ export function useActions(): Commands {
       markOverheadPaid: wrap(dataSource.markOverheadPaid),
       revertAdvanceApplication: wrap(dataSource.revertAdvanceApplication),
       assignAdvanceProject: wrap(dataSource.assignAdvanceProject),
+      createBatch: wrap(dataSource.createBatch),
+      updateBatchDraft: wrap(dataSource.updateBatchDraft),
+      confirmBatch: wrap(dataSource.confirmBatch),
+      cancelBatch: wrap(dataSource.cancelBatch),
+      setCostSharing: wrap(dataSource.setCostSharing),
+      addFiscalAdjustment: wrap(dataSource.addFiscalAdjustment),
       resetDemoData: wrap(dataSource.resetDemoData),
     }
   }, [])

@@ -74,8 +74,27 @@ function v6ToV7(data: Omit<Dataset, 'attachments'>): Dataset {
  * without project, flagged for review); no payment, advance, closure or payment state
  * is inferred.
  */
-function v7ToV8(data: Dataset): Dataset {
+function v7ToV8(data: Omit<Dataset, 'settlementBatches'>): Omit<Dataset, 'settlementBatches'> {
   return { ...data, schemaVersion: 8 }
+}
+
+/** v8 → v9: grouped settlements collection. No batch, payment or deduction is generated from history. */
+function v8ToV9(data: Omit<Dataset, 'settlementBatches'>): Dataset {
+  return { ...data, schemaVersion: 9, settlementBatches: [] }
+}
+
+/**
+ * v9 → v10: grouped settlements switch to the pro-rata model. Batches already
+ * confirmed (or released) keep their recorded "ordered" compensation exactly as
+ * they were — never reinterpreted. Drafts commit nothing yet, so they adopt the
+ * new model.
+ */
+function v9ToV10(data: Dataset): Dataset {
+  return {
+    ...data,
+    schemaVersion: 10,
+    settlementBatches: (data.settlementBatches ?? []).map((b) => (b.allocationMode ? b : { ...b, allocationMode: b.status === 'draft' ? 'pro-rata' : 'ordered' })),
+  }
 }
 
 const steps: Record<number, (data: never) => unknown> = {
@@ -85,6 +104,8 @@ const steps: Record<number, (data: never) => unknown> = {
   5: v5ToV6 as (data: never) => unknown,
   6: v6ToV7 as (data: never) => unknown,
   7: v7ToV8 as (data: never) => unknown,
+  8: v8ToV9 as (data: never) => unknown,
+  9: v9ToV10 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

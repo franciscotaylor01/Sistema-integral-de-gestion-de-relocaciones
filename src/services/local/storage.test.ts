@@ -101,12 +101,12 @@ describe('storage migrations', () => {
     const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 2, savedAt: 'x', data }) })
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(8)
+    expect(dataset!.schemaVersion).toBe(10)
     expect(dataset!.projects.some((p) => p.id === projectId)).toBe(true)
     expect(dataset!.tasks.length).toBeGreaterThanOrEqual(tasks) // + tasks of the Phase 4.6 demo projects
     expect(dataset!.clients.every((c) => c.policy && !('priceLists' in c))).toBe(true)
     expect(dataset!.quotations.length).toBeGreaterThan(0)
-    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(8)
+    expect(JSON.parse(storage.data[STORAGE_KEY]).schemaVersion).toBe(10)
     expect(readDataset(storage).issue).toBeUndefined()
   })
 
@@ -140,7 +140,7 @@ describe('storage migrations', () => {
     const storage = memoryStorage({ [STORAGE_KEY]: JSON.stringify({ schemaVersion: 4, savedAt: 'x', data }) })
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(8)
+    expect(dataset!.schemaVersion).toBe(10)
     expect(dataset!.projects[0].notes).toBe('Nota de Fase 4')
     expect(dataset!.settlements.length).toBeGreaterThan(0)
     expect(JSON.stringify([dataset!.invoices, dataset!.receipts, dataset!.obligations, dataset!.supplierPayments])).toBe(JSON.stringify([v4.invoices, v4.receipts, v4.obligations, v4.supplierPayments]))

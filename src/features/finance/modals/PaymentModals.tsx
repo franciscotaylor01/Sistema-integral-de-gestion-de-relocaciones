@@ -17,6 +17,8 @@ import { advanceInfo, possibleDuplicatePayments, type SupplierAllocationInput, t
 import { projectsOfPayment } from '@/domain/finance/supplierViews'
 import { ProjectRef } from '../components/ProjectRef'
 import { advanceStatusMeta } from '@/config/finance'
+import { batchPaymentBreakdown, isOrdered, lineProgress } from '@/domain/finance/batchProgress'
+import { batchFinancials } from '@/domain/finance/batches'
 import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
@@ -111,7 +113,7 @@ function SupplierAllocationEditor({
  * supplier page, the project's Finance tab and Finance → payments. "advance"
  * mode is the same operation without applying it yet (it must name a project).
  */
-export function SupplierPaymentModal({ open, onClose, workspace, supplierId, obligationId, projectId, mode = 'payment' }: { open: boolean; onClose: () => void; workspace: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode?: 'payment' | 'advance' }) {
+export function SupplierPaymentModal({ open, onClose, workspace, supplierId, obligationId, projectId, mode = 'payment', batchId }: { open: boolean; onClose: () => void; workspace: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode?: 'payment' | 'advance'; batchId?: string }) {
   return (
     <Modal
       open={open}
@@ -120,22 +122,28 @@ export function SupplierPaymentModal({ open, onClose, workspace, supplierId, obl
       description={mode === 'advance' ? 'Dinero entregado por adelantado para un proyecto. No es un costo: se aplica después a obligaciones del mismo proveedor y proyecto.' : 'Dinero efectivamente pagado. Lo no aplicado a obligaciones queda como anticipo del proyecto.'}
       size="lg"
     >
-      {open && <SupplierPaymentForm onClose={onClose} ws={workspace} supplierId={supplierId} obligationId={obligationId} projectId={projectId} mode={mode} />}
+      {open && <SupplierPaymentForm onClose={onClose} ws={workspace} supplierId={supplierId} obligationId={obligationId} projectId={projectId} mode={mode} batchId={batchId} />}
     </Modal>
   )
 }
 
-function SupplierPaymentForm({ onClose, ws, supplierId, obligationId, projectId, mode }: { onClose: () => void; ws: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode: 'payment' | 'advance' }) {
+function SupplierPaymentForm({ onClose, ws, supplierId, obligationId, projectId, mode, batchId }: { onClose: () => void; ws: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode: 'payment' | 'advance'; batchId?: string }) {
+  const batch = batchId ? ws.settlementBatches.find((b) => b.id === batchId) : undefined
+  const progress = batch ? lineProgress(ws.dataset, batch) : undefined
+  const proRata = batch && !isOrdered(batch)
+  const batchOutstanding = batch ? batchFinancials(ws.dataset, batch).outstanding : 0
   const actions = useActions()
   const { run, busy, errors, formError } = useCommand()
   const [requestId] = useState(() => randomId('req'))
   const preset = obligationId ? ws.obligationById.get(obligationId) : undefined
   const presetOutstanding = preset ? ws.obligationFin.get(preset.id)!.outstanding : 0
   const [input, setInput] = useState<SupplierPaymentInput>(() => ({
-    supplierId: preset?.supplierId ?? supplierId ?? '',
+    supplierId: batch?.supplierId ?? preset?.supplierId ?? supplierId ?? '',
     date: DEMO_TODAY,
-    currency: preset?.currency ?? (supplierId ? (ws.supplierById.get(supplierId)?.preferredCurrency ?? '') : ''),
-    amount: presetOutstanding,
+    currency: batch?.currency ?? preset?.currency ?? (supplierId ? (ws.supplierById.get(supplierId)?.preferredCurrency ?? '') : ''),
+    amount: proRata ? batchOutstanding : batch ? addMoney(...batch.lines.map((l) => progress!.get(l.id)!.remaining)) : presetOutstanding,
+    batchId: proRata ? batch.id : undefined,
+    batchAllocations: batch && !proRata ? batch.lines.filter((l) => progress!.get(l.id)!.remaining > 0).map((l) => ({ batchId: batch.id, lineId: l.id, amount: progress!.get(l.id)!.remaining })) : undefined,
     method: 'transfer',
     reference: '',
     notes: '',
@@ -209,7 +217,38 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId, projectId,
           {(p) => <TextInput {...p} value={input.reference ?? ''} onChange={(e) => patch({ reference: e.target.value })} maxLength={60} />}
         </Field>
       </div>
-      {(mode === 'advance' || advance > 0) && (
+      {batch && proRata && <BatchBreakdown ws={ws} batchId={batch.id} cash={input.amount} error={errors.amount} />}
+      {batch && !proRata && (
+        <div className="rounded-panel bg-surface-muted p-[10px]">
+          <p className="mb-[8px] text-[13.5px] font-medium text-ink-secondary">Imputación a la liquidación {batch.number} (por proyecto)</p>
+          {errors.batchAllocations && <FormError message={errors.batchAllocations} />}
+          <div className="flex flex-col gap-[6px]">
+            {batch.lines.map((l) => {
+              const rem = progress!.get(l.id)!.remaining
+              const idx = (input.batchAllocations ?? []).findIndex((a) => a.lineId === l.id)
+              const cur = idx >= 0 ? input.batchAllocations![idx].amount : 0
+              const setLine = (v: number) => {
+                const rest = (input.batchAllocations ?? []).filter((a) => a.lineId !== l.id)
+                const next = v > 0 ? [...rest, { batchId: batch.id, lineId: l.id, amount: v }] : rest
+                patch({ batchAllocations: next, amount: addMoney(...next.map((a) => a.amount)) })
+              }
+              return (
+                <div key={l.id} className="grid items-center gap-[10px] rounded-[14px] bg-surface px-[12px] py-[9px] sm:grid-cols-[minmax(0,1fr)_160px]">
+                  <span className="min-w-0">
+                    <ProjectRef ws={ws} projectId={l.projectId} compact />
+                    <span className="tabular block text-[12px] text-muted">Saldo de la línea {money(rem, batch.currency)}</span>
+                    {idx >= 0 && errors[`batchAllocations.${idx}.amount`] && <span className="block text-[12px] font-medium text-danger">{errors[`batchAllocations.${idx}.amount`]}</span>}
+                  </span>
+                  <Field label={`Pagar línea ${l.projectId}`} className="[&>label]:sr-only">
+                    {(p) => <TextInput {...p} type="number" min={0} step="0.01" disabled={rem <= 0} value={cur || ''} onChange={(e) => setLine(e.target.value === '' ? 0 : Number(e.target.value))} />}
+                  </Field>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+      {!batch && (mode === 'advance' || advance > 0) && (
         <div className="grid gap-[14px] rounded-panel bg-surface-muted p-[12px] sm:grid-cols-2">
           <Field label="Proyecto del anticipo" required error={errors.projectId} hint="Todo anticipo corresponde a un proyecto específico.">
             {(p) => (
@@ -239,7 +278,7 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId, projectId,
           </Field>
         </div>
       )}
-      {mode === 'payment' && (
+      {mode === 'payment' && !batch && (
       <div>
         <div className="mb-[8px] flex flex-wrap items-end justify-between gap-2">
           <p className="text-[13.5px] font-medium text-ink-secondary">Aplicación a obligaciones</p>
@@ -676,6 +715,53 @@ function AssignProject({ ws, paymentId }: { ws: Workspace; paymentId: string }) 
       <Button size="sm" className="self-start" disabled={busy} onClick={() => run(() => actions.assignAdvanceProject(paymentId, projectId, undefined, reason), { title: 'Proyecto asignado' })}>
         Asignar proyecto
       </Button>
+    </div>
+  )
+}
+
+/** Read-only pro-rata split of a grouped-settlement payment: no arbitrary imputation. */
+function BatchBreakdown({ ws, batchId, cash, error }: { ws: Workspace; batchId: string; cash: number; error?: string }) {
+  const batch = ws.settlementBatches.find((b) => b.id === batchId)!
+  const f = batchFinancials(ws.dataset, batch)
+  const valid = Number.isFinite(cash) && cash > 0 && cash <= f.outstanding
+  const br = valid ? batchPaymentBreakdown(ws.dataset, batch, cash) : undefined
+  return (
+    <div className="rounded-panel bg-surface-muted p-[10px] text-[13.5px]">
+      <p className="font-medium text-ink-secondary">
+        Liquidación {batch.number} · saldo {money(f.outstanding, batch.currency)}
+      </p>
+      <p className="mt-[2px] text-[12.5px] text-muted">El pago se distribuye en proporción a los saldos de cada participación, deducción y ajuste. Pagar el saldo completo los cierra exactamente.</p>
+      {error && <FormError message={error} />}
+      {br && (
+        <ul className="mt-[8px] flex flex-col gap-[4px]">
+          {br.lines.map((l) => {
+            const line = batch.lines.find((x) => x.id === l.lineId)!
+            return (
+              <li key={l.lineId} className="flex justify-between gap-2 rounded-[10px] bg-surface px-[10px] py-[6px]">
+                <span className="min-w-0">
+                  Participación <ProjectRef ws={ws} projectId={line.projectId} compact className="inline-block align-top" />
+                </span>
+                <span className="tabular font-medium">
+                  {money(l.amount, batch.currency)}
+                  {line.currency !== batch.currency && <span className="block text-right text-[12px] font-normal text-muted">= {money(l.originalAmount, line.currency)}</span>}
+                </span>
+              </li>
+            )
+          })}
+          {br.deductions.map((d) => (
+            <li key={d.deductionId} className="flex justify-between gap-2 rounded-[10px] bg-surface px-[10px] py-[6px]">
+              <span>Deducción · {ws.costs.find((c) => c.id === batch.deductions.find((x) => x.id === d.deductionId)?.costId)?.description}</span>
+              <span className="tabular font-medium text-ink-secondary">−{money(d.amount, batch.currency)}</span>
+            </li>
+          ))}
+          {br.adjustment !== 0 && (
+            <li className="flex justify-between gap-2 rounded-[10px] bg-surface px-[10px] py-[6px]">
+              <span>Ajustes</span>
+              <span className="tabular font-medium">{money(br.adjustment, batch.currency)}</span>
+            </li>
+          )}
+        </ul>
+      )}
     </div>
   )
 }

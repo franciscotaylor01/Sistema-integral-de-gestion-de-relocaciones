@@ -7,6 +7,7 @@ import { DomainError, isIsoDate } from '../errors'
 import { appendAudit } from './audit'
 import { isMoney } from './money'
 import { assertCostsOpen } from './costControl'
+import { validateSharing, type SharingInput } from './batches'
 
 export interface CostInput {
   scope: 'project' | 'company'
@@ -25,6 +26,8 @@ export interface CostInput {
   paymentStatus?: 'pending' | 'paid'
   paidAt?: string
   paymentRef?: string
+  /** Phase 4.9: shared Eugenia–Florencia expense (effective split of this record). */
+  sharing?: SharingInput
 }
 
 export function validateCost(ds: Dataset, input: CostInput, today: string): Record<string, string> {
@@ -43,6 +46,10 @@ export function validateCost(ds: Dataset, input: CostInput, today: string): Reco
   if (!isMoney(input.amount) || input.amount <= 0) f.amount = 'Monto mayor a cero (hasta 2 decimales).'
   if (!isIsoDate(input.date)) f.date = 'Fecha inválida.'
   else if (input.date > today) f.date = 'Un costo incurrido no puede tener fecha futura.'
+  if (input.sharing) {
+    if (input.scope !== 'company') f['sharing.partnerPct'] = 'Solo los gastos generales se comparten.'
+    else Object.assign(f, validateSharing(ds, input.sharing))
+  }
   if (input.scope === 'company') {
     if (input.period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(input.period)) f.period = 'Período AAAA-MM.'
     if ((input.overheadCategory?.length ?? 0) > 60) f.overheadCategory = 'Máximo 60 caracteres.'
@@ -72,6 +79,7 @@ export function buildCost(input: CostInput, ctx: DomainContext): CostRecord {
           paymentStatus: input.paymentStatus ?? 'pending',
           paidAt: input.paymentStatus === 'paid' ? input.paidAt : undefined,
           paymentRef: input.paymentStatus === 'paid' ? input.paymentRef?.trim() || undefined : undefined,
+          sharing: input.sharing ? { ...input.sharing, reference: input.sharing.reference?.trim() || undefined } : undefined,
         }
       : {}),
     createdAt: ctx.now(),

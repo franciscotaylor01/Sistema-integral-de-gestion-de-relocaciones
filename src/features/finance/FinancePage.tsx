@@ -146,7 +146,7 @@ export function FinancePage() {
                 { value: 'costos', label: 'Costos y gastos' },
                 { value: 'gastos-generales', label: 'Gastos generales' },
                 { value: 'resultados', label: 'Resultados por proyecto' },
-                { value: 'liquidaciones', label: 'Liquidaciones', count: workspace.settlements.length },
+                { value: 'liquidaciones', label: 'Resumen Flor', count: workspace.settlements.length },
                 { value: 'comercial', label: 'Comercial' },
                 { value: 'cotizaciones', label: 'Cotizaciones', count: workspace.quotations.length },
                 { value: 'ordenes', label: 'Órdenes de compra', count: workspace.purchaseOrders.filter((p) => p.status === 'active').length },

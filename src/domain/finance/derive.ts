@@ -112,7 +112,9 @@ export const receiptAllocated = (r: Pick<CustomerReceipt, 'allocations'>) => add
 /** Unallocated remainder of a receipt: an explicit client credit / advance. */
 export const receiptUnallocated = (r: CustomerReceipt) => (r.status === 'recorded' ? subMoney(r.amount, receiptAllocated(r)) : 0)
 
-export const supplierPaymentAllocated = (p: Pick<SupplierPayment, 'allocations'>) => addMoney(...p.allocations.filter((a) => !a.reversedAt).map((a) => a.amount))
+/** Cash explained by the payment's applications (grouped settlements: participations − deductions + adjustments). */
+export const supplierPaymentAllocated = (p: Pick<SupplierPayment, 'allocations' | 'batchAllocations' | 'batchDeductions' | 'batchAdjustment'>) =>
+  subMoney(addMoney(...p.allocations.filter((a) => !a.reversedAt).map((a) => a.amount), ...(p.batchAllocations ?? []).map((a) => a.amount), p.batchAdjustment ?? 0), addMoney(...(p.batchDeductions ?? []).map((d) => d.amount)))
 /** Unallocated remainder of a supplier payment: an explicit supplier advance. */
 export const supplierPaymentUnallocated = (p: SupplierPayment) => (p.status === 'recorded' ? subMoney(p.amount, supplierPaymentAllocated(p)) : 0)
 

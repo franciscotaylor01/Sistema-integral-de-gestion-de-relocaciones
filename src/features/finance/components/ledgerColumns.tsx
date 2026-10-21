@@ -250,7 +250,11 @@ export function supplierPaymentColumns(ws: Workspace, opts: { onOpen?: (id: stri
       width: '14%',
       cell: (p) => (
         <span className="block truncate text-[13.5px]">
-          {p.allocations.filter((a) => !a.reversedAt).length ? p.allocations.filter((a) => !a.reversedAt).map((a) => ws.obligationById.get(a.obligationId)?.reference).join(', ') : <span className="text-muted">Anticipo</span>}
+          {p.batchAllocations?.length
+            ? `Liquidación ${ws.settlementBatches.find((b) => b.id === p.batchAllocations![0].batchId)?.number ?? ''}`
+            : p.allocations.filter((a) => !a.reversedAt).length
+              ? p.allocations.filter((a) => !a.reversedAt).map((a) => ws.obligationById.get(a.obligationId)?.reference).join(', ')
+              : <span className="text-muted">Anticipo</span>}
         </span>
       ),
     },

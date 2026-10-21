@@ -5,6 +5,7 @@ import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { appendAudit } from './audit'
 import { invoiceFinancials, lineSubtotal, obligationFinancials } from './derive'
+import { settlementBatchProgress } from './batchProgress'
 import { addMoney, cmpMoney, fromCents, isMoney, minMoney, percentOf, subMoney, sumMoney, toCents } from './money'
 
 /*
@@ -24,8 +25,21 @@ export interface SettlementFinancials {
   collected: number
   /** Incurred direct costs, excluding the partner's own linked invoices (never deducted twice). */
   directCosts: number
+  /** Phase 4.9: documented fiscal adjustments deducted from the base. */
+  fiscalAdjustments: number
   base: number
   adjustments: number
+  /** Rule label, e.g. "35% (regla preliminar)". */
+  pctLabel: string
+  defaultRule: boolean
+  /** Paid on linked partner invoices (Phase 4.5). */
+  paidViaInvoices: number
+  /** Settled through grouped settlements (cash + compensated deductions). */
+  batchSettled: number
+  /** Committed in confirmed grouped settlements and not yet settled. */
+  committed: number
+  /** Releasable − paid − committed: what can go into a new grouped settlement. */
+  available: number
   partnerShare?: number
   ownerShare?: number
   releasable?: number
@@ -43,6 +57,13 @@ export interface SettlementFinancials {
   signalNote: string
   warnings: string[]
 }
+
+/**
+ * Preliminary commercial rule confirmed by Eugenia: the partner receives 35% of
+ * the distributable base. Applies to participations without an explicit rule;
+ * explicit rules (fixed agreements, per service) are kept as configured.
+ */
+export const DEFAULT_PARTNER_PCT = 35
 
 const PCT = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= 100 && Math.round(n * 100) === n * 100
 
@@ -74,25 +95,30 @@ export function settlementFinancials(ds: Dataset, s: ProjectSettlement, today: s
   const unlinked = ds.obligations.filter((o) => o.supplierId === s.supplierId && o.projectId === s.projectId && o.currency === cur && o.lifecycle !== 'cancelled' && !linkedElsewhere.has(o.id))
   const costs = ds.costs.filter((c) => c.projectId === s.projectId && c.currency === cur && c.status === 'incurred' && !linkedCosts.has(c.id))
   const directCosts = sumMoney(costs, (c) => c.amount)
-  const base = subMoney(netRevenue, directCosts)
+  const fiscalAdjustments = sumMoney(s.fiscalAdjustments ?? [], (a) => a.amount)
+  const base = subMoney(subMoney(netRevenue, directCosts), fiscalAdjustments)
 
   let partnerInvoiced = 0
-  let partnerPaid = 0
+  let paidViaInvoices = 0
   let partnerOverdue = false
   for (const o of linked) {
     const f = obligationFinancials(ds, o, today)
     partnerInvoiced = addMoney(partnerInvoiced, o.amount)
-    partnerPaid = addMoney(partnerPaid, f.paid)
+    paidViaInvoices = addMoney(paidViaInvoices, f.paid)
     if (f.overdue) partnerOverdue = true
   }
+  const progress = settlementBatchProgress(ds, s.id)
+  const partnerPaid = addMoney(paidViaInvoices, progress.settled)
   if (unlinked.length) warnings.push(`${unlinked.length} comprobante(s) de la prestadora en este proyecto sin vincular: hoy se descuentan como costo directo.`)
 
   const adjustments = sumMoney(s.adjustments, (a) => a.amount)
   const share = ruleShare(ds, s, base, linkedCosts, warnings)
-  const common = { netRevenue, grossInvoiced, collected, directCosts, base, adjustments, partnerInvoiced, partnerPaid, partnerOverdue, linked, unlinked, warnings }
+  const defaultRule = !s.rule
+  const pctLabel = defaultRule ? `${DEFAULT_PARTNER_PCT}% (regla preliminar)` : s.rule!.method === 'percentage' ? `${s.rule!.pct}%` : s.rule!.method === 'fixed' ? 'Importe fijo' : 'Por servicio'
+  const common = { netRevenue, grossInvoiced, collected, directCosts, fiscalAdjustments, base, adjustments, pctLabel, defaultRule, paidViaInvoices, batchSettled: progress.settled, committed: progress.committed, partnerInvoiced, partnerPaid, partnerOverdue, linked, unlinked, warnings }
 
   if (share === undefined) {
-    return { ...common, configured: false, pendingPayment: 0, signal: 'gray', signalNote: 'Pendiente de configurar' }
+    return { ...common, available: 0, configured: false, pendingPayment: 0, signal: 'gray', signalNote: 'Pendiente de configurar' }
   }
   let partnerShare = addMoney(share, adjustments)
   if (cmpMoney(partnerShare, 0) < 0) {
@@ -125,13 +151,15 @@ export function settlementFinancials(ds: Dataset, s: ProjectSettlement, today: s
     signal = 'yellow'
     signalNote = cmpMoney(partnerPaid, 0) > 0 ? 'Pagada parcialmente; resto pendiente de condiciones' : 'Pendiente de cumplir condiciones'
   }
-  return { ...common, configured: true, partnerShare, ownerShare, releasable, pendingPayment, shareOutstanding, signal, signalNote }
+  const free = subMoney(subMoney(releasable, partnerPaid), progress.committed)
+  const available = cmpMoney(free, 0) > 0 ? free : 0
+  if (cmpMoney(addMoney(partnerPaid, progress.committed), partnerShare) > 0) warnings.push('Lo pagado y comprometido supera la participación actual: hay una diferencia pendiente de ajuste.')
+  return { ...common, available, configured: true, partnerShare, ownerShare, releasable, pendingPayment, shareOutstanding, signal, signalNote }
 }
 
 /** Partner share from the rule (before adjustments); undefined when no valid rule exists. */
 function ruleShare(ds: Dataset, s: ProjectSettlement, base: number, excludedCosts: Set<string>, warnings: string[]): number | undefined {
-  const r = s.rule
-  if (!r) return undefined
+  const r = s.rule ?? { method: 'percentage' as const, pct: DEFAULT_PARTNER_PCT, components: [] }
   if (r.method === 'fixed') return isMoney(r.amount) && r.amount > 0 ? r.amount : undefined
   if (r.method === 'percentage') {
     if (!PCT(r.pct)) return undefined
@@ -347,4 +375,18 @@ export function confirmSettlement(ds: Dataset, id: string, note: string, ctx: Do
   }
   const next: Dataset = { ...ds, settlements: replaceById(ds.settlements, id, (x) => ({ ...x, confirmations: [snap, ...x.confirmations] })) }
   return log(next, s, 'Liquidación confirmada', ctx, note)
+}
+
+/** Documented fiscal adjustment on the distributable base (never computed from assumed tax rates). */
+export function addFiscalAdjustment(ds: Dataset, id: string, input: { date: string; concept: string; amount: number; reference?: string; reason: string }, ctx: DomainContext): Dataset {
+  const s = must(ds, id)
+  const f: Record<string, string> = {}
+  if (!input.concept.trim()) f.concept = 'Indicá el concepto (p. ej., IIBB según DDJJ).'
+  if (!isMoney(input.amount, { allowNegative: true }) || input.amount === 0) f.amount = 'Importe distinto de 0 (positivo reduce la base).'
+  if (!isIsoDate(input.date)) f.date = 'Fecha inválida.'
+  if (!input.reason.trim()) f.reason = 'Documentá el respaldo del ajuste.'
+  if (Object.keys(f).length) throw new DomainError('Revisá el ajuste fiscal.', f)
+  const adj = { id: ctx.newId('setf'), date: input.date, concept: input.concept.trim(), amount: input.amount, reference: input.reference?.trim() || undefined, reason: input.reason.trim(), actorId: ctx.actorId }
+  const next: Dataset = { ...ds, settlements: replaceById(ds.settlements, id, (x) => ({ ...x, fiscalAdjustments: [...(x.fiscalAdjustments ?? []), adj] })) }
+  return log(next, s, `Ajuste fiscal ${adj.concept}: ${input.amount} ${s.currency}`, ctx, input.reason)
 }

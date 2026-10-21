@@ -16,9 +16,9 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Timeline } from '@/components/ui/Timeline'
 import { DEMO_TODAY } from '@/config/brand'
 import { paymentMethodLabel, settlementMethodLabel, settlementReleaseLabel, settlementSignalMeta } from '@/config/finance'
-import { clientPath, invoicePath, projectPath, supplierPath } from '@/config/navigation'
+import { batchPath, clientPath, invoicePath, projectPath, supplierPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
-import { settlementFinancials } from '@/domain/finance/settlements'
+import { DEFAULT_PARTNER_PCT, settlementFinancials } from '@/domain/finance/settlements'
 import { obligationColumns } from '@/features/finance/components/ledgerColumns'
 import { activityKindMeta } from '@/features/projects/activityMeta'
 import { NotFoundPage } from '@/features/sections/NotFoundPage'
@@ -30,7 +30,7 @@ import { formatDate, formatDateTime } from '@/lib/dates'
 import { formatMoney, formatPercent } from '@/lib/format'
 import { staggerVariants } from '@/lib/motion'
 import type { ProjectSettlement } from '@/types/domain'
-import { AmountModal, RuleModal, type AmountKind } from './SettlementModals'
+import { AmountModal, FiscalAdjustmentModal, RuleModal, type AmountKind } from './SettlementModals'
 
 export function SettlementPage() {
   const { settlementId = '' } = useParams()
@@ -65,6 +65,7 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
   const { run, busy } = useCommand()
   const [dialog, setDialog] = useState<'rule' | AmountKind | null>(null)
   const [unlinking, setUnlinking] = useState<string>()
+  const [fiscal, setFiscal] = useState(false)
   const f = settlementFinancials(ws.dataset, s, DEMO_TODAY)
   const project = ws.projectById.get(s.projectId)!
   const partner = ws.supplierById.get(s.supplierId)
@@ -85,15 +86,24 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
         .filter((a) => linkedIds.has(a.obligationId))
         .map((a) => ({ id: a.id, date: p.date, kind: 'Pago a la prestadora' as const, ref: p.number, detail: `${ws.obligationById.get(a.obligationId)?.reference} · ${paymentMethodLabel[p.method]}`, amount: a.amount, reversed: p.status === 'reversed', href: supplierPath(p.supplierId) })),
     ),
+    ...ws.supplierPayments.flatMap((p) =>
+      (p.batchAllocations ?? [])
+        .filter((a) => a.settlementId === s.id)
+        .map((a) => ({ id: a.id, date: p.date, kind: 'Pago a la prestadora' as const, ref: p.number, detail: `Liquidación ${ws.settlementBatches.find((b) => b.id === a.batchId)?.number ?? ''}${a.originalCurrency !== p.currency ? ` · ${formatMoney(a.originalAmount, a.originalCurrency)}` : ''}`, amount: a.originalAmount, reversed: p.status === 'reversed', href: batchPath(a.batchId) })),
+    ),
   ].sort((a, b) => b.date.localeCompare(a.date))
 
   const calc: [string, string, string?][] = [
     ['Ingresos netos registrados', m(f.netRevenue), 'Facturas emitidas, sin impuestos'],
     ['Costos directos', `− ${m(f.directCosts)}`, 'Costos incurridos; excluye las facturas vinculadas de la prestadora'],
-    ['Resultado base para distribuir', m(f.base), 'Operativo, antes de impuestos'],
+    ['Ajustes fiscales documentados', `− ${m(f.fiscalAdjustments)}`, 'Cargados manualmente con respaldo; las retenciones de cobranzas no se descuentan'],
+    ['Base distribuible', m(f.base), `Regla: ${f.pctLabel}`],
     ...(f.configured
       ? ([
-          ['Participación Florencia', m(f.partnerShare), f.adjustments ? `Incluye ajustes por ${m(f.adjustments)}` : undefined],
+          ['Participación Florencia', m(f.partnerShare), f.adjustments ? `Incluye ajustes por ${m(f.adjustments)}` : f.pctLabel],
+          ['Liquidado en liquidaciones agrupadas', m(f.batchSettled)],
+          ['Comprometido (confirmado, sin pagar)', m(f.committed)],
+          ['Disponible para liquidar', m(f.available)],
           ['Participación Eugenia', m(f.ownerShare), 'Resultado base − participación de Florencia'],
           ['Cobrado al cliente', `${m(f.collected)} de ${m(f.grossInvoiced)}`],
           ['Liquidable según condición', m(f.releasable), settlementReleaseLabel[s.release]],
@@ -138,6 +148,10 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
             <Button variant="outline" onClick={() => setDialog('rule')}>
               <Settings2 aria-hidden className="size-[16px]" strokeWidth={1.9} />
               {rule ? 'Modificar distribución' : 'Configurar distribución'}
+            </Button>
+            <Button variant="outline" onClick={() => setFiscal(true)}>
+              <Plus aria-hidden className="size-[16px]" strokeWidth={2} />
+              Ajuste fiscal
             </Button>
             <Button variant="outline" onClick={() => setDialog('adjustment')}>
               <SlidersHorizontal aria-hidden className="size-[16px]" strokeWidth={1.9} />
@@ -264,7 +278,7 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
           <Card aria-labelledby="set-rule" className="px-[20px] pb-[20px] pt-[20px]">
             <SectionTitle id="set-rule" size="sm" title="Distribución" />
             {!rule ? (
-              <p className="mt-[12px] rounded-[14px] bg-surface-muted px-[12px] py-[10px] text-[13.5px] text-muted">Pendiente de configurar. No se asume ningún reparto.</p>
+              <p className="mt-[12px] rounded-[14px] bg-surface-muted px-[12px] py-[10px] text-[13.5px] text-ink-secondary">Regla preliminar confirmada: {DEFAULT_PARTNER_PCT}% de la base distribuible para Florencia. Podés configurar una regla explícita para este proyecto.</p>
             ) : (
               <dl className="mt-[12px] flex flex-col gap-[10px] text-[14px]">
                 <div>
@@ -300,6 +314,27 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
             </p>
           </Card>
 
+          {(s.fiscalAdjustments?.length ?? 0) > 0 && (
+            <Card aria-labelledby="set-fiscal" className="px-[20px] pb-[18px] pt-[20px]">
+              <SectionTitle id="set-fiscal" size="sm" title="Ajustes fiscales documentados" />
+              <ul className="mt-[12px] flex flex-col gap-[6px] text-[13.5px]">
+                {s.fiscalAdjustments!.map((a) => (
+                  <li key={a.id} className="rounded-[12px] bg-surface-muted px-[12px] py-[9px]">
+                    <span className="flex justify-between gap-3">
+                      <span className="font-medium">
+                        {a.concept} · {formatDate(a.date)}
+                      </span>
+                      <span className="tabular font-semibold">{formatMoney(a.amount, s.currency)}</span>
+                    </span>
+                    <span className="block text-[12.5px] text-muted">
+                      {a.reason}
+                      {a.reference && ` · ${a.reference}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {(s.adjustments.length > 0 || s.releases.length > 0) && (
             <Card aria-labelledby="set-adj" className="px-[20px] pb-[18px] pt-[20px]">
               <SectionTitle id="set-adj" size="sm" title="Ajustes y habilitaciones" />
@@ -362,6 +397,7 @@ function SettlementView({ s, ws }: { s: ProjectSettlement; ws: Workspace }) {
         </div>
       </motion.div>
 
+      <FiscalAdjustmentModal settlement={fiscal ? s : undefined} onClose={() => setFiscal(false)} />
       <RuleModal settlement={dialog === 'rule' ? s : undefined} onClose={() => setDialog(null)} workspace={ws} />
       <AmountModal settlement={dialog === 'adjustment' || dialog === 'release' || dialog === 'confirm' ? s : undefined} kind={dialog === 'adjustment' || dialog === 'release' || dialog === 'confirm' ? dialog : 'adjustment'} onClose={() => setDialog(null)} />
       <ConfirmDialog

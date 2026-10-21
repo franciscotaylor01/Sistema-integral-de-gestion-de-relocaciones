@@ -622,6 +622,8 @@ export interface CostRecord {
   paymentStatus?: 'pending' | 'paid'
   paidAt?: string
   paymentRef?: string
+  /** Phase 4.9: general expense shared Eugenia–Florencia, with the effective split of THIS record. */
+  sharing?: { partnerSupplierId: string; partnerPct: number; ownerPct: number; reference?: string }
   notes?: string
   createdAt: string
   createdBy: string
@@ -684,6 +686,12 @@ export interface SupplierPayment {
   reference?: string
   notes?: string
   allocations: SupplierPaymentAllocation[]
+  /** Phase 4.9: participation (project line) parts settled by this payment of a grouped settlement. */
+  batchAllocations?: BatchPaymentAllocation[]
+  /** Shared-expense deduction parts offset by this payment (pro-rata batches). */
+  batchDeductions?: { id: string; batchId: string; deductionId: string; costId: string; amount: number; originalAmount: number; originalCurrency: CurrencyCode }[]
+  /** Part of the batch adjustments settled by this payment (pro-rata batches, batch currency). */
+  batchAdjustment?: number
   /** Phase 4.8: project (and service) the unallocated remainder (advance) belongs to. */
   projectId?: string
   serviceId?: string
@@ -939,6 +947,8 @@ export interface ProjectSettlement {
   adjustments: SettlementAdjustment[]
   /** Partner invoices (supplier obligations) that document this share. */
   obligationIds: string[]
+  /** Phase 4.9: documented fiscal adjustments; each amount REDUCES the distributable base (negative increases it). */
+  fiscalAdjustments?: { id: string; date: string; concept: string; amount: number; reference?: string; reason: string; actorId: string }[]
   confirmations: SettlementConfirmation[]
   history: SettlementHistoryEntry[]
   notes?: string
@@ -1080,4 +1090,87 @@ export interface CostClosure {
   closedAt?: string
   notes?: string
   history: { id: string; date: string; action: string; reason?: string }[]
+}
+
+/* ───────────── Phase 4.9 — grouped settlements (Resumen Flor) ───────────── */
+
+/** Documented manual conversion (never fetched automatically). */
+export interface FxConversion {
+  from: CurrencyCode
+  to: CurrencyCode
+  /** Units of `to` per 1 `from`, decimal string. */
+  rate: string
+  date: string
+  source: string
+}
+
+export interface BatchLine {
+  id: string
+  /** Project participation account (Phase 4.5 settlement). */
+  settlementId: string
+  projectId: string
+  currency: CurrencyCode
+  /** Committed amount in the project currency. */
+  amount: number
+  /** Same amount in the batch currency. */
+  converted: number
+  fx?: FxConversion
+  /** Calculation snapshot at confirmation (immutable). */
+  snapshot?: { netRevenue: number; directCosts: number; fiscalAdjustments: number; base: number; pctLabel: string; partnerShare: number; partnerPaid: number; available: number; costsClosed: boolean }
+}
+
+export interface BatchDeduction {
+  id: string
+  /** Shared general expense. */
+  costId: string
+  currency: CurrencyCode
+  /** Partner portion deducted, in the expense currency. */
+  amount: number
+  converted: number
+  fx?: FxConversion
+  /** Split effective on the expense at the time. */
+  partnerPct: number
+  ownerPct: number
+}
+
+export interface SettlementBatch {
+  id: string
+  /** "LIQ-2026-0001". */
+  number: string
+  supplierId: string
+  currency: CurrencyCode
+  date: string
+  status: 'draft' | 'confirmed' | 'cancelled'
+  lines: BatchLine[]
+  deductions: BatchDeduction[]
+  /** Documented adjustments in the batch currency (+ increases the net, − decreases it). */
+  adjustments: { id: string; concept: string; amount: number; reference?: string }[]
+  /**
+   * Allocation model. "pro-rata" (current): participations and shared-expense
+   * deductions stay independent items and every payment is split proportionally.
+   * "ordered" (legacy, batches confirmed before this change): deductions were
+   * offset against lines in selection order — kept as recorded, never reinterpreted.
+   */
+  allocationMode?: 'ordered' | 'pro-rata'
+  /** Legacy ("ordered") only: deductions offset against lines at confirmation. */
+  compensation: { lineId: string; amount: number }[]
+  openCostsAcknowledged?: boolean
+  notes?: string
+  createdAt: string
+  confirmedAt?: string
+  cancelledAt?: string
+  cancelReason?: string
+  history: { id: string; date: string; action: string; detail?: string }[]
+}
+
+export interface BatchPaymentAllocation {
+  id: string
+  batchId: string
+  lineId: string
+  settlementId: string
+  /** In the payment (= batch) currency. */
+  amount: number
+  /** Equivalent in the project currency, using the line conversion. */
+  originalAmount: number
+  originalCurrency: CurrencyCode
 }

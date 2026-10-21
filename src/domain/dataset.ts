@@ -9,6 +9,7 @@ import type {
   OpenPurchaseOrder,
   Certificate,
   Attachment,
+  SettlementBatch,
   LegalEntity,
   SupplierAgreement,
   SupplierObligation,
@@ -33,7 +34,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 8
+export const SCHEMA_VERSION = 10
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -68,6 +69,8 @@ export interface Dataset {
   certificates: Certificate[]
   /** Phase 4.7 — document evidence metadata (files live in IndexedDB). */
   attachments: Attachment[]
+  /** Phase 4.9 — grouped settlements to the partner (Florencia). */
+  settlementBatches: SettlementBatch[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

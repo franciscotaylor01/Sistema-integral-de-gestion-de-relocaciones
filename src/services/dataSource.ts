@@ -1,6 +1,7 @@
 import type { CatalogItemInput, OpenOrderInput, ServiceItemInput } from '@/domain/commercial/catalog'
 import type { CertificateInput } from '@/domain/commercial/certificates'
 import type { EmissionInput } from '@/domain/finance/emission'
+import type { BatchInput, SharingInput } from '@/domain/finance/batches'
 import type { WithholdingInput } from '@/domain/finance/receipts'
 import type { AttachmentInput } from '@/domain/finance/attachments'
 import type { OpenOrderStatus, ProjectRecord } from '@/types/domain'
@@ -128,6 +129,12 @@ export interface SigrDataSource {
   markOverheadPaid(costId: string, input: { date: string; reference?: string }): Promise<CommandResult>
   revertAdvanceApplication(paymentId: string, allocationId: string, reason: string): Promise<CommandResult>
   assignAdvanceProject(paymentId: string, projectId: string, serviceId: string | undefined, reason: string): Promise<CommandResult>
+  createBatch(input: BatchInput, requestId: string): Promise<CommandResult<{ batchId: string; duplicate: boolean }>>
+  updateBatchDraft(batchId: string, input: BatchInput): Promise<CommandResult>
+  confirmBatch(batchId: string, input: { acknowledgeOpenCosts: boolean }): Promise<CommandResult>
+  cancelBatch(batchId: string, reason: string): Promise<CommandResult>
+  setCostSharing(costId: string, sharing: SharingInput | null): Promise<CommandResult>
+  addFiscalAdjustment(settlementId: string, input: { date: string; concept: string; amount: number; reference?: string; reason: string }): Promise<CommandResult>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

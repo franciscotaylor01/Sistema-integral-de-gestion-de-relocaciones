@@ -80,3 +80,11 @@ export const advanceStatusMeta: Record<AdvanceStatus, StatusMeta> = {
   partial: { label: 'Anticipo parcialmente aplicado', tone: 'info' },
   applied: { label: 'Anticipo aplicado', tone: 'success' },
 }
+
+export const batchStatusMeta: Record<'draft' | 'confirmed' | 'partially-paid' | 'paid' | 'cancelled', StatusMeta> = {
+  draft: { label: 'Borrador', tone: 'neutral' },
+  confirmed: { label: 'Confirmada · sin pagos', tone: 'info' },
+  'partially-paid': { label: 'Parcialmente pagada', tone: 'warning' },
+  paid: { label: 'Pagada', tone: 'success' },
+  cancelled: { label: 'Liberada', tone: 'neutral' },
+}

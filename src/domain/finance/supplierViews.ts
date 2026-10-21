@@ -21,8 +21,12 @@ export function paymentsForProject(ds: Pick<Dataset, 'supplierPayments' | 'oblig
 }
 
 /** Projects a payment relates to (advance project + projects of applied obligations), stable order. */
-export function projectsOfPayment(ds: Pick<Dataset, 'obligations'>, p: SupplierPayment): string[] {
-  const ids = [p.projectId, ...p.allocations.map((a) => findById(ds.obligations, a.obligationId)?.projectId)].filter((x): x is string => Boolean(x))
+export function projectsOfPayment(ds: Pick<Dataset, 'obligations'> & Partial<Pick<Dataset, 'settlements'>>, p: SupplierPayment): string[] {
+  const ids = [
+    p.projectId,
+    ...p.allocations.map((a) => findById(ds.obligations, a.obligationId)?.projectId),
+    ...(p.batchAllocations ?? []).map((a) => (ds.settlements ? findById(ds.settlements, a.settlementId)?.projectId : undefined)),
+  ].filter((x): x is string => Boolean(x))
   return [...new Set(ids)]
 }
 

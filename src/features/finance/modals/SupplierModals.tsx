@@ -15,6 +15,7 @@ import type { ObligationInput } from '@/domain/finance/obligations'
 import { agreementUsage, type AgreementInput, type SupplierInput } from '@/domain/finance/suppliers'
 import { subMoney } from '@/domain/finance/money'
 import { useActions } from '@/hooks/useActions'
+import type { SharingInput } from '@/domain/finance/batches'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
@@ -435,6 +436,7 @@ function CostForm({ onClose, ws, projectId, initialScope }: { onClose: () => voi
         <Field label="Fecha" required error={errors.date}>
           {(p) => <DateInput {...p} value={input.date} max={DEMO_TODAY} onChange={(e) => patch({ date: e.target.value })} />}
         </Field>
+        {input.scope === 'company' && <SharingFields ws={ws} value={input.sharing} onChange={(sharing) => patch({ sharing })} errors={errors} />}
         {input.scope === 'company' && (
           <Field label="Observaciones" className="sm:col-span-2">
             {(p) => <TextInput {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={300} />}
@@ -613,5 +615,77 @@ function ObligationForm({ onClose, ws, supplierId, projectId }: { onClose: () =>
       <Field label="Notas">{(p) => <TextArea {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={1000} className="min-h-[64px]" />}</Field>
       <Footer onClose={onClose} busy={busy} label="Registrar obligación" />
     </form>
+  )
+}
+
+/**
+ * Shared Eugenia–Florencia split for a general expense. Percentages are set PER
+ * EXPENSE (no global default); a previous expense's split can be reused, and the
+ * effective % is stored on this record.
+ */
+export function SharingFields({ ws, value, onChange, errors }: { ws: Workspace; value?: SharingInput; onChange: (v: SharingInput | undefined) => void; errors: Record<string, string> }) {
+  const partners = ws.suppliers.filter((s) => s.kind === 'professional')
+  const previous = ws.costs.filter((c) => c.sharing).sort((a, b) => b.date.localeCompare(a.date))
+  const set = (p: Partial<SharingInput>) => onChange({ partnerSupplierId: value?.partnerSupplierId ?? partners.find((x) => x.id === 'sup_florencia')?.id ?? partners[0]?.id ?? '', partnerPct: value?.partnerPct ?? 0, ownerPct: value?.ownerPct ?? 0, reference: value?.reference, ...p })
+  return (
+    <div className="flex flex-col gap-[10px] rounded-panel bg-surface-muted p-[10px] sm:col-span-2">
+      <label className="flex items-center gap-[10px] text-[13.5px] font-medium">
+        <input type="checkbox" className="size-[16px] accent-[var(--color-ink)]" checked={Boolean(value)} onChange={(e) => (e.target.checked ? set({}) : onChange(undefined))} />
+        Gasto compartido Eugenia – Florencia
+      </label>
+      {value && (
+        <div className="grid gap-[10px] sm:grid-cols-2">
+          {previous.length > 0 && (
+            <Field label="Reutilizar distribución de un gasto anterior" className="sm:col-span-2">
+              {(p) => (
+                <SelectInput
+                  {...p}
+                  value=""
+                  onChange={(e) => {
+                    const c = previous.find((x) => x.id === e.target.value)
+                    if (c?.sharing) set({ partnerSupplierId: c.sharing.partnerSupplierId, partnerPct: c.sharing.partnerPct, ownerPct: c.sharing.ownerPct })
+                  }}
+                >
+                  <option value="">Elegí un gasto…</option>
+                  {previous.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.description} · {c.sharing!.partnerPct}/{c.sharing!.ownerPct}
+                    </option>
+                  ))}
+                </SelectInput>
+              )}
+            </Field>
+          )}
+          <Field label="Socia" error={errors['sharing.partnerSupplierId']}>
+            {(p) => (
+              <SelectInput {...p} value={value.partnerSupplierId} onChange={(e) => set({ partnerSupplierId: e.target.value })}>
+                {partners.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </SelectInput>
+            )}
+          </Field>
+          <Field label="Referencia / comprobante">{(p) => <TextInput {...p} value={value.reference ?? ''} onChange={(e) => set({ reference: e.target.value })} maxLength={120} />}</Field>
+          <Field label="% Florencia" required error={errors['sharing.partnerPct']}>
+            {(p) => (
+              <TextInput
+                {...p}
+                inputMode="decimal"
+                value={value.partnerPct || ''}
+                onChange={(e) => {
+                  const v = Number(e.target.value.replace(',', '.'))
+                  set({ partnerPct: v, ownerPct: Number.isFinite(v) ? Math.round((100 - v) * 100) / 100 : value.ownerPct })
+                }}
+              />
+            )}
+          </Field>
+          <Field label="% Eugenia" required error={errors['sharing.ownerPct']} hint="Deben sumar 100%.">
+            {(p) => <TextInput {...p} inputMode="decimal" value={value.ownerPct || ''} onChange={(e) => set({ ownerPct: Number(e.target.value.replace(',', '.')) })} />}
+          </Field>
+        </div>
+      )}
+    </div>
   )
 }

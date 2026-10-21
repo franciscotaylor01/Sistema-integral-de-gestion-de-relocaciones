@@ -22,12 +22,13 @@ import { approveCertificate, createCertificate, rejectCertificate, submitCertifi
 import { approvePriceEntry } from '@/domain/commercial/pricing'
 import { changeInvoiceDueDate, confirmInvoiceEmission, correctFiscalData, recordFiscalData } from '@/domain/finance/emission'
 import { addAttachment } from '@/domain/finance/attachments'
-import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation } from '@/domain/finance/settlements'
+import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation, addFiscalAdjustment } from '@/domain/finance/settlements'
 import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
 import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
 import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt, addReceiptWithholdings } from '@/domain/finance/receipts'
 import { applySupplierAdvance, assignAdvanceProject, recordSupplierPayment, revertAdvanceApplication, reverseSupplierPayment } from '@/domain/finance/supplierPayments'
 import { closeProjectCosts, reopenProjectCosts } from '@/domain/finance/costControl'
+import { cancelBatch, confirmBatch, createBatch, setCostSharing, updateBatchDraft } from '@/domain/finance/batches'
 import { createAgreement, createSupplier, updateSupplier } from '@/domain/finance/suppliers'
 import { addProcedure, updateProcedure } from '@/domain/procedures'
 import { addProjectNote, createProject, updateProject } from '@/domain/projects'
@@ -212,6 +213,12 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     markOverheadPaid: (id, input) => simple((ds) => markOverheadPaid(ds, id, input, ctx)),
     revertAdvanceApplication: (id, allocationId, reason) => simple((ds) => revertAdvanceApplication(ds, id, allocationId, reason, ctx)),
     assignAdvanceProject: (id, projectId, serviceId, reason) => simple((ds) => assignAdvanceProject(ds, id, projectId, serviceId, reason, ctx)),
+    createBatch: (input, requestId) => run((ds) => createBatch(ds, input, requestId, ctx)),
+    updateBatchDraft: (id, input) => simple((ds) => updateBatchDraft(ds, id, input, ctx)),
+    confirmBatch: (id, input) => simple((ds) => confirmBatch(ds, id, input, ctx)),
+    cancelBatch: (id, reason) => simple((ds) => cancelBatch(ds, id, reason, ctx)),
+    setCostSharing: (id, sharing) => simple((ds) => setCostSharing(ds, id, sharing, ctx)),
+    addFiscalAdjustment: (id, input) => simple((ds) => addFiscalAdjustment(ds, id, input, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

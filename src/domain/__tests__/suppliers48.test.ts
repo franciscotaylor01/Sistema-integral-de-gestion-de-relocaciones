@@ -214,10 +214,11 @@ describe('settlements compatibility and migration', () => {
     const storage: StorageLike = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => void (mem[k] = v), removeItem: (k) => void delete mem[k] }
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(8)
-    const { schemaVersion: _a, ...rest } = dataset!
-    const { schemaVersion: _b, ...orig } = data
+    expect(dataset!.schemaVersion).toBe(10)
+    const { schemaVersion: _a, settlementBatches, ...rest } = dataset!
+    const { schemaVersion: _b, settlementBatches: _c, ...orig } = data
     expect(rest).toEqual(orig)
+    expect(settlementBatches).toEqual([])
     expect(dataset!.projects.every((p) => !p.costClosure)).toBe(true)
   })
 })

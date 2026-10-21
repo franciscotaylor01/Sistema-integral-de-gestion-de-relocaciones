@@ -27,12 +27,9 @@ describe('settlement calculation', () => {
     expect(fin(ds, 'set_0155')).toMatchObject({ collected: 0, releasable: 0, signal: 'gray' })
   })
 
-  it('without a rule shows "Pendiente de configurar" and no amounts', () => {
+  it('without an explicit rule applies the confirmed preliminary 35% (Phase 4.9)', () => {
     const f = fin(seed(), 'set_0152')
-    expect(f.configured).toBe(false)
-    expect(f.signalNote).toBe('Pendiente de configurar')
-    expect(f.partnerShare).toBeUndefined()
-    expect(f.releasable).toBeUndefined()
+    expect(f).toMatchObject({ configured: true, defaultRule: true, pctLabel: '35% (regla preliminar)', base: 9800, partnerShare: 3430, releasable: 2912.78 })
   })
 
   it('does not deduct the partner invoice twice', () => {
@@ -124,7 +121,7 @@ describe('settlement rules and history', () => {
     expect(s.confirmations).toHaveLength(1)
     expect(s.confirmations[0]).toMatchObject({ partnerShare: 3240, base: 16200 })
     expect(fin(ds, 'set_0143').partnerShare).toBe(4860)
-    expect(() => confirmSettlement(ds, 'set_0152', '', ctx)).toThrow(/pendiente de configurar/)
+    expect(confirmSettlement(ds, 'set_0152', '', ctx).settlements.find((s) => s.id === 'set_0152')!.confirmations[0].partnerShare).toBe(3430)
   })
 
   it('links only matching obligations, once, without touching payments', () => {
@@ -143,7 +140,7 @@ describe('settlement rules and history', () => {
     expect(fieldsOf(() => createSettlement(ds, { projectId: 'prj_0143', supplierId: 'sup_florencia', currency: 'USD', release: 'after-collection' }, 'a', ctx))).toHaveProperty('currency')
     const { ds: next, settlementId } = createSettlement(ds, { projectId: 'prj_0143', supplierId: 'sup_florencia', currency: 'EUR', release: 'after-collection' }, 'b', ctx)
     const f = settlementFinancials(next, next.settlements.find((s) => s.id === settlementId)!, TODAY)
-    expect(f).toMatchObject({ netRevenue: 0, collected: 0, configured: false })
+    expect(f).toMatchObject({ netRevenue: 0, collected: 0, partnerShare: 0, available: 0 })
     expect(createSettlement(next, { projectId: 'prj_0143', supplierId: 'sup_florencia', currency: 'EUR', release: 'after-collection' }, 'b', ctx).duplicate).toBe(true)
   })
 })

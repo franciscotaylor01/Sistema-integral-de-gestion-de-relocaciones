@@ -1,4 +1,4 @@
-import { HandCoins, Plus } from 'lucide-react'
+import { HandCoins, Layers, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { Button } from '@/components/ui/Button'
@@ -6,18 +6,23 @@ import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
 import { CurrencyFlag } from '@/components/ui/Flag'
+import { DateInput } from '@/components/ui/form'
 import { SectionTitle } from '@/components/ui/SectionTitle'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
-import { settlementSignalMeta } from '@/config/finance'
-import { clientPath, settlementPath } from '@/config/navigation'
+import { batchStatusMeta, settlementSignalMeta } from '@/config/finance'
+import { batchPath, clientPath, settlementPath } from '@/config/navigation'
+import { batchFinancials } from '@/domain/finance/batches'
+import { isCostClosed } from '@/domain/finance/costControl'
 import { addMoney } from '@/domain/finance/money'
 import { settlementFinancials, type SettlementFinancials } from '@/domain/finance/settlements'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
+import { formatDate } from '@/lib/dates'
 import { formatMoney } from '@/lib/format'
 import { matches } from '@/lib/search'
-import type { CurrencyCode, ProjectSettlement } from '@/types/domain'
+import type { CurrencyCode, ProjectSettlement, SettlementBatch } from '@/types/domain'
+import { BatchModal } from './BatchModal'
 import { NewSettlementModal } from './SettlementModals'
 
 export interface SettlementRow {
@@ -26,77 +31,99 @@ export interface SettlementRow {
 }
 
 const settlementRows = (ws: Workspace): SettlementRow[] => ws.settlements.map((s) => ({ s, f: settlementFinancials(ws.dataset, s, DEMO_TODAY) }))
+const sumBy = (items: { currency: CurrencyCode; v: number }[]) => {
+  const m = new Map<CurrencyCode, number>()
+  for (const x of items) m.set(x.currency, addMoney(m.get(x.currency) ?? 0, x.v))
+  return [...m.entries()]
+}
 
-const PENDING = 'Pendiente de configurar'
-
+/** "Resumen Flor": participations per project, multi-selection and grouped settlements. */
 export function SettlementsView({ workspace: ws, currency, client, status, q = '' }: { workspace: Workspace; currency: CurrencyCode | ''; client: string; status: string; q?: string }) {
   const [creating, setCreating] = useState(false)
+  const [batching, setBatching] = useState(false)
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+  const [selected, setSelected] = useState<string[]>([])
   const all = useMemo(() => settlementRows(ws), [ws])
   const rows = all.filter(({ s, f }) => {
     const p = ws.projectById.get(s.projectId)
+    if (from && (p?.startDate ?? '') < from) return false
+    if (to && (p?.startDate ?? '') > to) return false
     return (!currency || s.currency === currency) && (!client || p?.clientId === client) && (!status || f.signal === status) && matches(q, p?.code, ws.clientById.get(p?.clientId ?? '')?.name, ws.personById.get(p?.beneficiaryId ?? '')?.name)
   })
-  const totals = summarize(rows)
+  const sel = all.filter((r) => selected.includes(r.s.id))
+  const selTotals = sumBy(sel.map((r) => ({ currency: r.s.currency, v: r.f.available })))
+  const toggle = (id: string) => setSelected((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]))
   const m = (r: SettlementRow, v: number | undefined) => (v === undefined ? <span className="text-[13px] text-muted">—</span> : formatMoney(v, r.s.currency))
+  const totals = sumBy(rows.flatMap((r) => [{ currency: r.s.currency, v: r.f.partnerShare ?? 0 }]))
+  const pending = sumBy(rows.map((r) => ({ currency: r.s.currency, v: r.f.shareOutstanding ?? 0 })))
+  const batches = [...ws.settlementBatches].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 
   return (
     <>
       <Card aria-labelledby="set-summary" className="px-[18px] pb-[18px] pt-[19px]">
         <SectionTitle
           id="set-summary"
-          title="Resumen Eugenia – Florencia"
-          description="Resultado operativo antes de impuestos, por moneda y sin conversión. Solo incluye liquidaciones con distribución configurada."
+          title="Resumen Flor"
+          description="Participación de Florencia por proyecto: 35% de la base distribuible (regla preliminar) salvo reglas explícitas. Resultado operativo, por moneda y sin conversión."
           className="px-[2px]"
           action={
-            <Button size="sm" onClick={() => setCreating(true)}>
+            <Button size="sm" variant="outline" onClick={() => setCreating(true)}>
               <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
-              Nueva liquidación
+              Agregar proyecto
             </Button>
           }
         />
-        {totals.length === 0 ? (
-          <p className="mt-[14px] px-[2px] text-[14px] text-muted">Sin liquidaciones configuradas para los filtros elegidos.</p>
-        ) : (
-          <div className="mt-[18px] grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
-            {totals.map((t) => (
-              <article key={t.currency} aria-label={`Resumen en ${t.currency}`} className="rounded-tile bg-surface-muted p-[16px]">
-                <header className="flex items-center gap-[8px] text-[15px] font-semibold">
-                  <CurrencyFlag currency={t.currency} className="size-[20px]" />
-                  {t.currency}
-                </header>
-                <dl className="mt-[12px] flex flex-col rounded-[14px] bg-surface px-[12px] text-[13.5px]">
-                  {(
-                    [
-                      ['Participación Eugenia', t.owner],
-                      ['Participación Florencia', t.partner],
-                      ['Liquidable según cobros', t.releasable],
-                      ['Facturado por Florencia', t.invoiced],
-                      ['Pagado a Florencia', t.paid],
-                      ['Pendiente de pago (liquidable)', t.pending],
-                    ] as [string, number][]
-                  ).map(([label, v], i) => (
-                    <div key={label} className={cn('flex justify-between gap-3 py-[9px]', i < 5 && 'border-b border-line', i === 5 && v > 0 && 'text-danger')}>
-                      <dt className={i === 5 && v > 0 ? undefined : 'text-ink-secondary'}>{label}</dt>
-                      <dd className="tabular font-semibold">{formatMoney(v, t.currency)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </article>
-            ))}
-          </div>
-        )}
+        <div className="mt-[16px] grid gap-[14px] md:grid-cols-2 xl:grid-cols-3">
+          {totals.map(([c, v]) => (
+            <article key={c} className="rounded-tile bg-surface-muted p-[16px] text-[13.5px]">
+              <header className="flex items-center gap-[8px] text-[15px] font-semibold">
+                <CurrencyFlag currency={c} className="size-[20px]" />
+                {c}
+              </header>
+              <p className="mt-[8px] flex justify-between">
+                <span className="text-ink-secondary">Participación acumulada</span>
+                <span className="tabular font-semibold">{formatMoney(v, c)}</span>
+              </p>
+              <p className="flex justify-between">
+                <span className="text-ink-secondary">Saldo pendiente</span>
+                <span className="tabular font-semibold">{formatMoney(pending.find(([x]) => x === c)?.[1] ?? 0, c)}</span>
+              </p>
+            </article>
+          ))}
+        </div>
       </Card>
+
       <Card aria-labelledby="set-table" className="px-[19px] pb-[19px] pt-[19px]">
-        <SectionTitle id="set-table" title="Liquidaciones por proyecto" description="Estado derivado de cobros, facturas y pagos registrados. Abrí una liquidación para ver el cálculo y configurarla." />
+        <SectionTitle id="set-table" title="Participaciones por proyecto" description="Seleccioná saldos disponibles para liquidar en forma agrupada. Lo comprometido en liquidaciones confirmadas no se vuelve a ofrecer." />
+        <div className="mt-[12px] flex flex-wrap items-center gap-[10px] text-[13px]">
+          <span className="text-muted">Inicio del proyecto</span>
+          <DateInput aria-label="Desde" value={from} onChange={(e) => setFrom(e.target.value)} className="h-[38px] w-[160px]" />
+          <DateInput aria-label="Hasta" value={to} onChange={(e) => setTo(e.target.value)} className="h-[38px] w-[160px]" />
+        </div>
         <DataTable<SettlementRow>
-          className="mt-[18px]"
-          caption="Liquidaciones"
+          className="mt-[14px]"
+          caption="Participaciones de Florencia"
           rows={rows}
           getRowId={(r) => r.s.id}
-          rowHref={(r) => settlementPath(r.s.id)}
-          minWidth={1360}
+          minWidth={1480}
           dense
           columns={[
+            {
+              id: 'sel',
+              header: '',
+              width: '44px',
+              cell: (r) => (
+                <input
+                  type="checkbox"
+                  aria-label={`Seleccionar ${ws.projectById.get(r.s.projectId)?.code}`}
+                  className="size-[16px] accent-[var(--color-ink)]"
+                  disabled={r.f.available <= 0}
+                  checked={selected.includes(r.s.id)}
+                  onChange={() => toggle(r.s.id)}
+                />
+              ),
+            },
             {
               id: 'project',
               header: 'Proyecto',
@@ -105,7 +132,9 @@ export function SettlementsView({ workspace: ws, currency, client, status, q = '
                 const p = ws.projectById.get(r.s.projectId)
                 return (
                   <span className="block min-w-0">
-                    <span className="tabular block font-medium">{p?.code}</span>
+                    <Link to={settlementPath(r.s.id)} className="tabular block font-medium underline-offset-4 hover:underline">
+                      {p?.code}
+                    </Link>
                     <Link to={clientPath(p?.clientId ?? '')} className="block truncate text-[12px] text-muted hover:underline">
                       {ws.clientById.get(p?.clientId ?? '')?.name}
                     </Link>
@@ -113,18 +142,33 @@ export function SettlementsView({ workspace: ws, currency, client, status, q = '
                 )
               },
             },
-            { id: 'cur', header: 'Moneda', width: '76px', cell: (r) => r.s.currency },
-            { id: 'base', header: 'Resultado base', className: 'tabular', cell: (r) => m(r, r.f.base) },
-            { id: 'owner', header: 'Eugenia', className: 'tabular', cell: (r) => (r.f.configured ? m(r, r.f.ownerShare) : <span className="block whitespace-normal text-[12.5px] leading-[1.3] text-muted">{PENDING}</span>) },
-            { id: 'partner', header: 'Florencia', className: 'tabular font-medium', cell: (r) => m(r, r.f.partnerShare) },
-            { id: 'rel', header: 'Liquidable', className: 'tabular', cell: (r) => m(r, r.f.releasable) },
-            { id: 'inv', header: 'Facturado F.', className: 'tabular text-ink-secondary', cell: (r) => m(r, r.f.partnerInvoiced) },
-            { id: 'paid', header: 'Pagado F.', className: 'tabular text-success', cell: (r) => m(r, r.f.partnerPaid) },
-            { id: 'pending', header: 'Saldo', className: 'tabular font-semibold', cell: (r) => (r.f.configured ? m(r, r.f.shareOutstanding) : '—') },
+            { id: 'cur', header: 'Moneda', width: '70px', cell: (r) => r.s.currency },
+            { id: 'base', header: 'Base distribuible', className: 'tabular', cell: (r) => m(r, r.f.base) },
+            {
+              id: 'share',
+              header: 'Participación',
+              className: 'tabular font-medium',
+              cell: (r) => (
+                <span className="block">
+                  {m(r, r.f.partnerShare)}
+                  <span className="block text-[11.5px] font-normal text-muted">{r.f.pctLabel}</span>
+                </span>
+              ),
+            },
+            { id: 'paid', header: 'Liquidado / pagado', className: 'tabular text-success', cell: (r) => m(r, r.f.partnerPaid) },
+            { id: 'committed', header: 'Comprometido', className: 'tabular', cell: (r) => m(r, r.f.committed) },
+            { id: 'pending', header: 'Saldo pendiente', className: 'tabular font-semibold', cell: (r) => m(r, r.f.shareOutstanding) },
+            { id: 'avail', header: 'Disponible', className: 'tabular', cell: (r) => m(r, r.f.available) },
+            {
+              id: 'costs',
+              header: 'Costos',
+              width: '120px',
+              cell: (r) => (isCostClosed(ws.projectById.get(r.s.projectId)) ? <StatusBadge meta={{ label: 'Cerrados', tone: 'success' }} /> : <StatusBadge meta={{ label: 'Abiertos', tone: 'warning' }} />),
+            },
             {
               id: 'status',
               header: 'Estado',
-              width: '200px',
+              width: '170px',
               cell: (r) => (
                 <span className="block whitespace-normal">
                   <StatusBadge meta={settlementSignalMeta[r.f.signal]} />
@@ -133,36 +177,44 @@ export function SettlementsView({ workspace: ws, currency, client, status, q = '
               ),
             },
           ]}
-          empty={<EmptyState icon={HandCoins} title="No hay liquidaciones que coincidan" description="Creá una o ajustá los filtros." />}
+          empty={<EmptyState icon={HandCoins} title="No hay participaciones que coincidan" />}
+        />
+        <div className="mt-[12px] flex flex-wrap items-center justify-between gap-[10px] rounded-panel bg-surface-muted px-[14px] py-[10px] text-[13.5px]">
+          <span>
+            <span className="font-medium">{sel.length} seleccionados</span>
+            {selTotals.length > 0 && <span className="tabular text-ink-secondary"> · disponible {selTotals.map(([c, v]) => formatMoney(v, c)).join(' · ')}</span>}
+          </span>
+          <Button size="sm" disabled={!sel.length} onClick={() => setBatching(true)}>
+            <Layers aria-hidden className="size-[15px]" strokeWidth={1.9} />
+            Nueva liquidación agrupada
+          </Button>
+        </div>
+      </Card>
+
+      <Card aria-labelledby="batch-table" className="px-[19px] pb-[19px] pt-[19px]">
+        <SectionTitle id="batch-table" title="Liquidaciones agrupadas" description="Confirmar una liquidación compromete los saldos; los pagos se registran aparte, imputados a sus proyectos." />
+        <DataTable<SettlementBatch>
+          className="mt-[14px]"
+          caption="Liquidaciones agrupadas"
+          rows={batches}
+          getRowId={(b) => b.id}
+          rowHref={(b) => batchPath(b.id)}
+          minWidth={900}
+          dense
+          columns={[
+            { id: 'num', header: 'Liquidación', width: '140px', className: 'tabular font-medium', cell: (b) => b.number },
+            { id: 'date', header: 'Fecha', width: '110px', className: 'tabular', cell: (b) => formatDate(b.date) },
+            { id: 'proj', header: 'Proyectos', width: '22%', cell: (b) => <span className="block truncate text-ink-secondary">{b.lines.map((l) => ws.projectById.get(l.projectId)?.code).join(', ')}</span> },
+            { id: 'net', header: 'Neto', className: 'tabular font-medium', cell: (b) => formatMoney(batchFinancials(ws.dataset, b).net, b.currency) },
+            { id: 'paid', header: 'Pagado', className: 'tabular text-success', cell: (b) => formatMoney(batchFinancials(ws.dataset, b).paid, b.currency) },
+            { id: 'out', header: 'Saldo', className: cn('tabular'), cell: (b) => formatMoney(batchFinancials(ws.dataset, b).outstanding, b.currency) },
+            { id: 'st', header: 'Estado', width: '160px', cell: (b) => <StatusBadge meta={batchStatusMeta[batchFinancials(ws.dataset, b).status]} /> },
+          ]}
+          empty={<EmptyState title="Sin liquidaciones agrupadas" description="Seleccioná proyectos arriba para preparar la primera." />}
         />
       </Card>
       <NewSettlementModal open={creating} onClose={() => setCreating(false)} workspace={ws} />
+      <BatchModal open={batching} onClose={() => setBatching(false)} ws={ws} settlementIds={selected} />
     </>
   )
-}
-
-interface Totals {
-  currency: CurrencyCode
-  owner: number
-  partner: number
-  releasable: number
-  invoiced: number
-  paid: number
-  pending: number
-}
-
-function summarize(rows: SettlementRow[]): Totals[] {
-  const map = new Map<CurrencyCode, Totals>()
-  for (const { s, f } of rows) {
-    if (!f.configured) continue
-    const t = map.get(s.currency) ?? { currency: s.currency, owner: 0, partner: 0, releasable: 0, invoiced: 0, paid: 0, pending: 0 }
-    t.owner = addMoney(t.owner, f.ownerShare!)
-    t.partner = addMoney(t.partner, f.partnerShare!)
-    t.releasable = addMoney(t.releasable, f.releasable!)
-    t.invoiced = addMoney(t.invoiced, f.partnerInvoiced)
-    t.paid = addMoney(t.paid, f.partnerPaid)
-    t.pending = addMoney(t.pending, f.pendingPayment)
-    map.set(s.currency, t)
-  }
-  return [...map.values()]
 }
