@@ -1,5 +1,6 @@
 import type { SettlementSignal } from '@/domain/finance/settlements'
 import type { StatusMeta } from '@/config/catalogs'
+import type { AdvanceStatus } from '@/domain/finance/supplierPayments'
 import type { CollectionActionKind, CostCategory, InvoiceKind, PaymentCondition, PaymentMethod, SettlementMethod, SettlementRelease, SupplierKind, WithholdingType } from '@/types/domain'
 
 export const invoiceKindLabel: Record<InvoiceKind, string> = {
@@ -72,4 +73,10 @@ export const withholdingTypeLabel: Record<WithholdingType, string> = {
   ganancias: 'Ganancias',
   iibb: 'Ingresos Brutos',
   other: 'Otra retención',
+}
+
+export const advanceStatusMeta: Record<AdvanceStatus, StatusMeta> = {
+  unapplied: { label: 'Anticipo no aplicado', tone: 'warning' },
+  partial: { label: 'Anticipo parcialmente aplicado', tone: 'info' },
+  applied: { label: 'Anticipo aplicado', tone: 'success' },
 }

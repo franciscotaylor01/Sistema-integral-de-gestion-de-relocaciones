@@ -263,6 +263,8 @@ export interface ProjectRecord {
   openOrderId?: string
   /** Explicit per-project exception to the client's commercial policy. */
   commercialException?: { poMode?: PoMode; requiresCertificate?: boolean; reason: string }
+  /** Phase 4.8: cost closure (absent = open). Closed ≠ paid. */
+  costClosure?: CostClosure
   createdAt: string
   updatedAt: string
 }
@@ -576,6 +578,8 @@ export interface Supplier {
   defaultPaymentCondition: PaymentCondition
   active: boolean
   notes?: string
+  /** Phase 4.8: creation time (absent on suppliers created before; listed last). */
+  createdAt?: string
 }
 
 /** Agreed amount for a supplier's work on a contracted service (e.g. a professional's fee). */
@@ -612,6 +616,12 @@ export interface CostRecord {
   date: string
   status: 'incurred' | 'void'
   voidReason?: string
+  /** Phase 4.8 general (indirect) expenses: accounting period, editable category and payment state. */
+  period?: string
+  overheadCategory?: string
+  paymentStatus?: 'pending' | 'paid'
+  paidAt?: string
+  paymentRef?: string
   notes?: string
   createdAt: string
   createdBy: string
@@ -654,6 +664,12 @@ export interface SupplierPaymentAllocation {
   amount: number
   /** Explicit reason when paying before the agreed condition is met. */
   conditionOverride?: string
+  /** Phase 4.8: "advance" = later application of an advance (no new cash outflow). Absent = applied when paying. */
+  source?: 'payment' | 'advance'
+  date?: string
+  /** Corrections of an advance application keep the record. */
+  reversedAt?: string
+  reversalReason?: string
 }
 
 /** Money paid to a supplier; the unallocated remainder is an explicit advance. */
@@ -668,6 +684,10 @@ export interface SupplierPayment {
   reference?: string
   notes?: string
   allocations: SupplierPaymentAllocation[]
+  /** Phase 4.8: project (and service) the unallocated remainder (advance) belongs to. */
+  projectId?: string
+  serviceId?: string
+  history?: { id: string; date: string; action: string; detail?: string }[]
   fx?: FxMeta
   status: 'recorded' | 'reversed'
   reversedAt?: string
@@ -1052,4 +1072,12 @@ export interface Attachment {
   reference?: string
   createdAt: string
   createdBy: string
+}
+
+/** Explicit confirmation that all known project costs are registered. No user identity is stored (no auth yet). */
+export interface CostClosure {
+  status: 'open' | 'closed'
+  closedAt?: string
+  notes?: string
+  history: { id: string; date: string; action: string; reason?: string }[]
 }

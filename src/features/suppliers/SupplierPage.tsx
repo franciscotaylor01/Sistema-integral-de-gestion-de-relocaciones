@@ -91,7 +91,7 @@ const toInput = (s: Supplier): SupplierInput => ({
 function SupplierView({ supplier: s, workspace: ws }: { supplier: Supplier; workspace: Workspace }) {
   const actions = useActions()
   const { run, busy } = useCommand()
-  const [dialog, setDialog] = useState<'edit' | 'agreement' | 'obligation' | 'payment' | null>(null)
+  const [dialog, setDialog] = useState<'edit' | 'agreement' | 'obligation' | 'payment' | 'advance' | null>(null)
   const [obligationId, setObligationId] = useState<string>()
   const [paymentId, setPaymentId] = useState<string>()
   const [payFor, setPayFor] = useState<string>()
@@ -121,6 +121,10 @@ function SupplierView({ supplier: s, workspace: ws }: { supplier: Supplier; work
             <Button variant="outline" onClick={() => setDialog('edit')}>
               <Pencil aria-hidden className="size-[16px]" strokeWidth={1.9} />
               Editar
+            </Button>
+            <Button variant="outline" onClick={() => setDialog('advance')}>
+              <Plus aria-hidden className="size-[16px]" strokeWidth={2} />
+              Registrar anticipo
             </Button>
             <Button onClick={() => setDialog('payment')}>
               <Wallet aria-hidden className="size-[16px]" strokeWidth={1.9} />
@@ -242,7 +246,7 @@ function SupplierView({ supplier: s, workspace: ws }: { supplier: Supplier; work
           </Card>
 
           <Card aria-labelledby="sup-payments" className="px-[19px] pb-[19px] pt-[19px]">
-            <SectionTitle id="sup-payments" title="Pagos" description="Historial completo, incluidas las reversiones." />
+            <SectionTitle id="sup-payments" title="Pagos y anticipos" description="Historial completo del proveedor (misma fuente que Finanzas y los proyectos), incluidas reversiones y aplicaciones de anticipos." />
             <DataTable
               className="mt-[18px]"
               caption="Pagos al proveedor"
@@ -299,6 +303,7 @@ function SupplierView({ supplier: s, workspace: ws }: { supplier: Supplier; work
       <AgreementModal supplier={dialog === 'agreement' ? s : undefined} onClose={close} workspace={ws} />
       <ObligationModal open={dialog === 'obligation'} onClose={close} workspace={ws} supplierId={s.id} />
       <SupplierPaymentModal open={dialog === 'payment'} onClose={close} workspace={ws} supplierId={s.id} />
+      <SupplierPaymentModal open={dialog === 'advance'} onClose={close} workspace={ws} supplierId={s.id} mode="advance" />
       <SupplierPaymentModal open={Boolean(payFor)} onClose={() => setPayFor(undefined)} workspace={ws} supplierId={s.id} obligationId={payFor} />
       <SupplierPaymentDetailModal paymentId={paymentId} onClose={() => setPaymentId(undefined)} workspace={ws} />
       <ObligationDetailModal

@@ -13,7 +13,10 @@ import { getServiceType } from '@/config/serviceCatalog'
 import { randomId } from '@/domain/context'
 import { supplierPaymentUnallocated } from '@/domain/finance/derive'
 import { addMoney, subMoney } from '@/domain/finance/money'
-import type { SupplierAllocationInput, SupplierPaymentInput } from '@/domain/finance/supplierPayments'
+import { advanceInfo, possibleDuplicatePayments, type SupplierAllocationInput, type SupplierPaymentInput } from '@/domain/finance/supplierPayments'
+import { projectsOfPayment } from '@/domain/finance/supplierViews'
+import { ProjectRef } from '../components/ProjectRef'
+import { advanceStatusMeta } from '@/config/finance'
 import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
@@ -27,9 +30,9 @@ import { Link } from 'react-router'
 const money = (v: number, c: CurrencyCode) => formatCurrency(v, c, { decimals: 2 })
 
 /** Approved, open obligations of a supplier in a currency (allocation targets). */
-function payable(ws: Workspace, supplierId: string, currency: CurrencyCode | '') {
+function payable(ws: Workspace, supplierId: string, currency: CurrencyCode | '', projectId?: string) {
   return ws.obligations
-    .filter((o) => o.supplierId === supplierId && o.currency === currency && o.lifecycle === 'approved' && (ws.obligationFin.get(o.id)?.outstanding ?? 0) > 0)
+    .filter((o) => o.supplierId === supplierId && o.currency === currency && o.lifecycle === 'approved' && (ws.obligationFin.get(o.id)?.outstanding ?? 0) > 0 && (!projectId || o.projectId === projectId))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
 }
 
@@ -40,6 +43,8 @@ function SupplierAllocationEditor({
   allocations,
   onChange,
   errors,
+  projectId,
+  emptyNote,
 }: {
   ws: Workspace
   supplierId: string
@@ -47,8 +52,11 @@ function SupplierAllocationEditor({
   allocations: SupplierAllocationInput[]
   onChange: (a: SupplierAllocationInput[]) => void
   errors: Record<string, string>
+  /** Only obligations of this project (advance applications). */
+  projectId?: string
+  emptyNote?: string
 }) {
-  const items = payable(ws, supplierId, currency)
+  const items = payable(ws, supplierId, currency, projectId)
   const get = (id: string) => allocations.find((a) => a.obligationId === id)
   const set = (obligationId: string, p: Partial<SupplierAllocationInput>) => {
     const current = get(obligationId) ?? { obligationId, amount: 0 }
@@ -57,7 +65,7 @@ function SupplierAllocationEditor({
     onChange(next.amount > 0 || Number.isNaN(next.amount) ? [...rest, next] : rest)
   }
   if (!supplierId || !currency) return <p className="text-[13.5px] text-muted">Elegí proveedor y moneda para ver sus obligaciones aprobadas.</p>
-  if (items.length === 0) return <p className="rounded-[14px] bg-surface-muted px-[14px] py-[11px] text-[13.5px] text-muted">Sin obligaciones aprobadas pendientes en {currency}. El pago quedará como anticipo explícito.</p>
+  if (items.length === 0) return <p className="rounded-[14px] bg-surface-muted px-[14px] py-[11px] text-[13.5px] text-muted">Sin obligaciones aprobadas pendientes en {currency}. {emptyNote ?? 'El importe quedará como anticipo del proyecto que elijas.'}</p>
   return (
     <div className="flex flex-col gap-[8px] rounded-panel bg-surface-muted p-[8px]">
       {items.map((o) => {
@@ -68,9 +76,8 @@ function SupplierAllocationEditor({
           <div key={o.id} className="rounded-[14px] bg-surface px-[12px] py-[10px]">
             <div className="grid items-center gap-[10px] sm:grid-cols-[minmax(0,1fr)_170px_auto]">
               <span className="min-w-0">
-                <span className="tabular block truncate text-[14px] font-medium">
-                  {o.reference} <span className="font-normal text-muted">· {o.projectId ? ws.projectById.get(o.projectId)?.code : 'General'}</span>
-                </span>
+                <span className="tabular block truncate text-[14px] font-medium">{o.reference}</span>
+                <ProjectRef ws={ws} projectId={o.projectId} serviceId={o.serviceId} compact />
                 <span className={cn('block text-[12px]', f.overdue ? 'text-danger' : 'text-muted')}>
                   Saldo {money(f.outstanding, o.currency)} · vence {formatDate(o.dueDate)}
                   {!f.conditionMet && ` · ${f.conditionNote}`}
@@ -99,15 +106,26 @@ function SupplierAllocationEditor({
 
 /* ───────────────────────── Record supplier payment ───────────────────────── */
 
-export function SupplierPaymentModal({ open, onClose, workspace, supplierId, obligationId }: { open: boolean; onClose: () => void; workspace: Workspace; supplierId?: string; obligationId?: string }) {
+/**
+ * The single entry point to record money paid to a supplier — used by the
+ * supplier page, the project's Finance tab and Finance → payments. "advance"
+ * mode is the same operation without applying it yet (it must name a project).
+ */
+export function SupplierPaymentModal({ open, onClose, workspace, supplierId, obligationId, projectId, mode = 'payment' }: { open: boolean; onClose: () => void; workspace: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode?: 'payment' | 'advance' }) {
   return (
-    <Modal open={open} onClose={onClose} title="Registrar pago a proveedor" description="Dinero efectivamente pagado. Las obligaciones siguen abiertas hasta cubrirse." size="lg">
-      {open && <SupplierPaymentForm onClose={onClose} ws={workspace} supplierId={supplierId} obligationId={obligationId} />}
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={mode === 'advance' ? 'Registrar anticipo a proveedor' : 'Registrar pago a proveedor'}
+      description={mode === 'advance' ? 'Dinero entregado por adelantado para un proyecto. No es un costo: se aplica después a obligaciones del mismo proveedor y proyecto.' : 'Dinero efectivamente pagado. Lo no aplicado a obligaciones queda como anticipo del proyecto.'}
+      size="lg"
+    >
+      {open && <SupplierPaymentForm onClose={onClose} ws={workspace} supplierId={supplierId} obligationId={obligationId} projectId={projectId} mode={mode} />}
     </Modal>
   )
 }
 
-function SupplierPaymentForm({ onClose, ws, supplierId, obligationId }: { onClose: () => void; ws: Workspace; supplierId?: string; obligationId?: string }) {
+function SupplierPaymentForm({ onClose, ws, supplierId, obligationId, projectId, mode }: { onClose: () => void; ws: Workspace; supplierId?: string; obligationId?: string; projectId?: string; mode: 'payment' | 'advance' }) {
   const actions = useActions()
   const { run, busy, errors, formError } = useCommand()
   const [requestId] = useState(() => randomId('req'))
@@ -121,8 +139,11 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId }: { onClos
     method: 'transfer',
     reference: '',
     notes: '',
-    allocations: preset && preset.lifecycle === 'approved' ? [{ obligationId: preset.id, amount: presetOutstanding }] : [],
+    allocations: mode === 'payment' && preset && preset.lifecycle === 'approved' ? [{ obligationId: preset.id, amount: presetOutstanding }] : [],
+    projectId: preset?.projectId ?? projectId,
+    serviceId: preset?.serviceId,
   }))
+  const blocked = preset && preset.lifecycle !== 'approved'
   const patch = (p: Partial<SupplierPaymentInput>) => setInput((i) => ({ ...i, ...p }))
   const allocated = addMoney(...input.allocations.map((a) => (Number.isFinite(a.amount) ? a.amount : 0)))
   const advance = subMoney(input.amount || 0, allocated)
@@ -137,6 +158,11 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId }: { onClos
       className="flex flex-col gap-[16px]"
     >
       <FormError message={formError} />
+      {blocked && (
+        <p role="alert" className="rounded-[14px] bg-warning-soft px-[14px] py-[11px] text-[13.5px] text-warning">
+          La obligación {preset!.reference} todavía no está aprobada: aprobala antes de pagarla. Si es un pago por adelantado, registralo como anticipo del proyecto.
+        </p>
+      )}
       <div className="grid gap-[14px] sm:grid-cols-2 xl:grid-cols-3">
         <Field label="Proveedor" required error={errors.supplierId}>
           {(p) => (
@@ -183,6 +209,37 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId }: { onClos
           {(p) => <TextInput {...p} value={input.reference ?? ''} onChange={(e) => patch({ reference: e.target.value })} maxLength={60} />}
         </Field>
       </div>
+      {(mode === 'advance' || advance > 0) && (
+        <div className="grid gap-[14px] rounded-panel bg-surface-muted p-[12px] sm:grid-cols-2">
+          <Field label="Proyecto del anticipo" required error={errors.projectId} hint="Todo anticipo corresponde a un proyecto específico.">
+            {(p) => (
+              <SelectInput {...p} value={input.projectId ?? ''} onChange={(e) => patch({ projectId: e.target.value || undefined, serviceId: undefined })}>
+                <option value="">Elegí el proyecto</option>
+                {ws.projects.map((pr) => (
+                  <option key={pr.id} value={pr.id}>
+                    {pr.code} · {ws.personById.get(pr.beneficiaryId)?.name} · {ws.clientById.get(pr.clientId)?.name}
+                  </option>
+                ))}
+              </SelectInput>
+            )}
+          </Field>
+          <Field label="Servicio relacionado (opcional)" error={errors.serviceId}>
+            {(p) => (
+              <SelectInput {...p} value={input.serviceId ?? ''} disabled={!input.projectId} onChange={(e) => patch({ serviceId: e.target.value || undefined })}>
+                <option value="">Sin servicio</option>
+                {ws.services
+                  .filter((x) => x.projectId === input.projectId)
+                  .map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {getServiceType(x.typeId).label}
+                    </option>
+                  ))}
+              </SelectInput>
+            )}
+          </Field>
+        </div>
+      )}
+      {mode === 'payment' && (
       <div>
         <div className="mb-[8px] flex flex-wrap items-end justify-between gap-2">
           <p className="text-[13.5px] font-medium text-ink-secondary">Aplicación a obligaciones</p>
@@ -197,6 +254,7 @@ function SupplierPaymentForm({ onClose, ws, supplierId, obligationId }: { onClos
         {errors.allocations && <FormError message={errors.allocations} />}
         <SupplierAllocationEditor ws={ws} supplierId={input.supplierId} currency={input.currency} allocations={input.allocations} onChange={(a) => patch({ allocations: a })} errors={errors} />
       </div>
+      )}
       <Field label="Notas">{(p) => <TextArea {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={1000} className="min-h-[64px]" />}</Field>
       <div className="sticky bottom-0 -mx-[22px] -mb-[20px] flex justify-end gap-[10px] border-t border-line bg-surface px-[22px] py-[14px]">
         <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>
@@ -228,7 +286,10 @@ function PaymentDetail({ paymentId, ws, onClose }: { paymentId: string; ws: Work
   const { run, busy, errors, formError } = useCommand()
   const [reversing, setReversing] = useState(false)
   const [allocations, setAllocations] = useState<SupplierAllocationInput[]>([])
+  const [reverting, setReverting] = useState<string>()
   const free = supplierPaymentUnallocated(p)
+  const adv = advanceInfo(p)
+  const dupes = possibleDuplicatePayments(ws.dataset)
   return (
     <div className="flex flex-col gap-[16px]">
       <dl className="grid grid-cols-2 gap-[12px] rounded-panel bg-surface-muted px-[14px] py-[12px] text-[14px]">
@@ -251,6 +312,18 @@ function PaymentDetail({ paymentId, ws, onClose }: { paymentId: string; ws: Work
             {p.reference && ` · ${p.reference}`}
           </dd>
         </div>
+        <div className="col-span-2">
+          <dt className="text-[12.5px] text-muted">Proyecto(s)</dt>
+          <dd className="flex flex-col gap-[4px]">
+            {projectsOfPayment(ws.dataset, p).length === 0 ? <span className="text-[13px] text-warning">Anticipo histórico sin proyecto: requiere revisión</span> : projectsOfPayment(ws.dataset, p).map((id) => <ProjectRef key={id} ws={ws} projectId={id} serviceId={id === p.projectId ? p.serviceId : undefined} />)}
+          </dd>
+        </div>
+        {dupes.has(p.id) && (
+          <div className="col-span-2">
+            <StatusBadge meta={{ label: 'Posible duplicado: revisar', tone: 'warning' }} />
+            <p className="mt-[4px] text-[12.5px] text-muted">Hay otro pago del mismo proveedor, fecha, moneda, importe y referencia. No se elimina automáticamente.</p>
+          </div>
+        )}
         {p.status === 'reversed' && (
           <div className="col-span-2">
             <StatusBadge meta={{ label: `Revertido el ${formatDate(p.reversedAt ?? p.date)}`, tone: 'neutral' }} />
@@ -260,24 +333,58 @@ function PaymentDetail({ paymentId, ws, onClose }: { paymentId: string; ws: Work
       </dl>
       <ul className="flex flex-col gap-[6px]">
         {p.allocations.length === 0 && <li className="text-[13.5px] text-muted">Sin aplicar (anticipo).</li>}
-        {p.allocations.map((a) => (
-          <li key={a.id} className="rounded-[12px] bg-surface-muted px-[12px] py-[9px] text-[14px]">
-            <span className="flex justify-between">
-              <span className="tabular">{ws.obligationById.get(a.obligationId)?.reference}</span>
-              <span className="tabular font-medium">{money(a.amount, p.currency)}</span>
-            </span>
-            {a.conditionOverride && <span className="mt-[2px] block text-[12.5px] text-warning">Pago anticipado: {a.conditionOverride}</span>}
-          </li>
-        ))}
+        {p.allocations.map((a) => {
+          const o = ws.obligationById.get(a.obligationId)
+          return (
+            <li key={a.id} className={cn('rounded-[12px] bg-surface-muted px-[12px] py-[9px] text-[14px]', a.reversedAt && 'opacity-60')}>
+              <span className="flex justify-between gap-2">
+                <span className="min-w-0">
+                  <span className={cn('tabular block', a.reversedAt && 'line-through')}>
+                    {o?.reference} <span className="text-[12.5px] text-muted">· {a.source === 'advance' ? `anticipo aplicado ${a.date ? formatDate(a.date) : ''}` : 'aplicado al pagar'}</span>
+                  </span>
+                  <ProjectRef ws={ws} projectId={o?.projectId} serviceId={o?.serviceId} compact />
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-[2px]">
+                  <span className="tabular font-medium">{money(a.amount, p.currency)}</span>
+                  {a.source === 'advance' && !a.reversedAt && p.status === 'recorded' && (
+                    <button type="button" onClick={() => setReverting(a.id)} className="text-[12px] font-medium text-ink-secondary underline-offset-2 hover:underline">
+                      Corregir
+                    </button>
+                  )}
+                </span>
+              </span>
+              {a.conditionOverride && <span className="mt-[2px] block text-[12.5px] text-warning">Pago anticipado: {a.conditionOverride}</span>}
+              {a.reversedAt && <span className="mt-[2px] block text-[12.5px] text-muted">Corregida el {formatDate(a.reversedAt)}: {a.reversalReason}</span>}
+            </li>
+          )
+        })}
       </ul>
-      {free > 0 && (
+      {adv && (
+        <div className="grid grid-cols-3 gap-[8px] rounded-panel bg-surface-muted px-[14px] py-[10px] text-[13.5px]">
+          <span>
+            <span className="block text-[12px] text-muted">Anticipo entregado</span>
+            <span className="tabular font-semibold">{money(adv.given, p.currency)}</span>
+          </span>
+          <span>
+            <span className="block text-[12px] text-muted">Aplicado</span>
+            <span className="tabular font-semibold">{money(adv.applied, p.currency)}</span>
+          </span>
+          <span>
+            <span className="block text-[12px] text-muted">Sin aplicar</span>
+            <span className="tabular font-semibold">{money(adv.available, p.currency)}</span>
+          </span>
+          <span className="col-span-3">
+            <StatusBadge meta={advanceStatusMeta[adv.status]} />
+          </span>
+        </div>
+      )}
+      {free > 0 && p.status === 'recorded' && !p.projectId && <AssignProject ws={ws} paymentId={p.id} />}
+      {free > 0 && p.status === 'recorded' && p.projectId && (
         <div className="flex flex-col gap-[10px]">
-          <p className="text-[13.5px]">
-            Anticipo sin aplicar: <span className="tabular font-semibold">{money(free, p.currency)}</span>
-          </p>
+          <p className="text-[13.5px]">Aplicar el anticipo a obligaciones del mismo proveedor, proyecto y moneda (no genera otro egreso de caja):</p>
           <FormError message={formError} />
           {errors.allocations && <FormError message={errors.allocations} />}
-          <SupplierAllocationEditor ws={ws} supplierId={p.supplierId} currency={p.currency} allocations={allocations} onChange={setAllocations} errors={errors} />
+          <SupplierAllocationEditor ws={ws} supplierId={p.supplierId} currency={p.currency} allocations={allocations} onChange={setAllocations} errors={errors} projectId={p.projectId} emptyNote="Todavía no hay obligaciones aprobadas de este proveedor y proyecto en esta moneda: el anticipo sigue disponible." />
           <div>
             <Button
               size="sm"
@@ -315,6 +422,34 @@ function PaymentDetail({ paymentId, ws, onClose }: { paymentId: string; ws: Work
           notify({ title: 'Pago revertido' })
         }}
       />
+      <ConfirmDialog
+        open={Boolean(reverting)}
+        onClose={() => setReverting(undefined)}
+        title="Corregir aplicación de anticipo"
+        confirmLabel="Corregir"
+        reasonLabel="Motivo"
+        message="La aplicación queda en el historial como corregida y el importe vuelve a estar disponible en el anticipo."
+        onConfirm={async (reason) => {
+          await actions.revertAdvanceApplication(p.id, reverting!, reason)
+          notify({ title: 'Aplicación corregida' })
+        }}
+      />
+      {(p.history?.length ?? 0) > 0 && (
+        <div>
+          <p className="text-[13.5px] font-medium text-ink-secondary">Historial</p>
+          <ul className="mt-[6px] flex flex-col gap-[4px] text-[13px]">
+            {p.history!.map((h) => (
+              <li key={h.id} className="flex justify-between gap-2 rounded-[10px] bg-surface-muted px-[10px] py-[6px]">
+                <span>
+                  <span className="font-medium">{h.action}</span>
+                  {h.detail && <span className="text-muted"> · {h.detail}</span>}
+                </span>
+                <span className="tabular shrink-0 text-muted">{formatDate(h.date.slice(0, 10))}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   )
 }
@@ -506,6 +641,41 @@ function ObligationDetail({ obligationId, ws, onClose, onPay }: { obligationId: 
           notify({ title: 'Obligación anulada' })
         }}
       />
+    </div>
+  )
+}
+
+
+/** Historical advances without project: assign one explicitly before applying. */
+function AssignProject({ ws, paymentId }: { ws: Workspace; paymentId: string }) {
+  const actions = useActions()
+  const { run, busy, errors, formError } = useCommand()
+  const [projectId, setProjectId] = useState('')
+  const [reason, setReason] = useState('')
+  return (
+    <div className="flex flex-col gap-[10px] rounded-panel bg-warning-soft p-[12px]">
+      <p className="text-[13.5px] text-warning">Anticipo histórico sin proyecto. Asignale el proyecto al que corresponde para poder aplicarlo (no se infiere automáticamente).</p>
+      <FormError message={formError} />
+      <div className="grid gap-[10px] sm:grid-cols-2">
+        <Field label="Proyecto" required error={errors.projectId}>
+          {(p) => (
+            <SelectInput {...p} value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">Elegí el proyecto</option>
+              {ws.projects.map((pr) => (
+                <option key={pr.id} value={pr.id}>
+                  {pr.code} · {ws.personById.get(pr.beneficiaryId)?.name}
+                </option>
+              ))}
+            </SelectInput>
+          )}
+        </Field>
+        <Field label="Motivo" required error={errors.reason}>
+          {(p) => <TextInput {...p} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200} />}
+        </Field>
+      </div>
+      <Button size="sm" className="self-start" disabled={busy} onClick={() => run(() => actions.assignAdvanceProject(paymentId, projectId, undefined, reason), { title: 'Proyecto asignado' })}>
+        Asignar proyecto
+      </Button>
     </div>
   )
 }

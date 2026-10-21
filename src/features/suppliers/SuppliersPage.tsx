@@ -18,6 +18,7 @@ import { supplierPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { SupplierFormModal } from '@/features/finance/modals/SupplierModals'
 import { supplierBalances } from '@/features/finance/selectors'
+import { sortSuppliersNewestFirst } from '@/domain/finance/supplierViews'
 import { useWorkspace } from '@/hooks/useWorkspace'
 import { formatCurrency } from '@/lib/format'
 import { currencyEntries } from '@/lib/money'
@@ -46,14 +47,14 @@ export function SuppliersPage() {
 
   const rows = useMemo(
     () =>
-      (ws?.suppliers ?? [])
+      sortSuppliersNewestFirst(ws?.suppliers ?? [])
         .filter(
           (s) =>
             (!kind || s.kind === kind) &&
             (!active || (active === 'active') === s.active) &&
             matches(q, s.name, s.contactName, s.email, countryNames[s.country as CountryCode], ...s.categories.map((c) => getServiceType(c as ServiceTypeId).label)),
         )
-        .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name)),
+        .slice(),
     [ws, q, kind, active],
   )
 

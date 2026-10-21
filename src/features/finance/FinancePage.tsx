@@ -46,6 +46,9 @@ import { ObligationDetailModal, SupplierPaymentDetailModal, SupplierPaymentModal
 import { ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
 import { CostModal, ObligationModal, SupplierFormModal } from './modals/SupplierModals'
 import { SettlementsView } from './settlements/SettlementsView'
+import { sortSuppliersNewestFirst } from '@/domain/finance/supplierViews'
+import { advanceInfo } from '@/domain/finance/supplierPayments'
+import { AdvancesView, OverheadsView } from './components/SupplierFinanceViews'
 import { receivableColumns, receivableStatusMeta } from './components/receivableColumns'
 import { receivableRows, type ReceivableStatus } from '@/domain/finance/receivables'
 import { OpenOrdersPanel } from '@/features/catalog/CatalogPanels'
@@ -54,11 +57,11 @@ import { certificateStatusMeta } from '@/features/catalog/meta'
 import type { CertificateStatus } from '@/types/domain'
 import { obligationOutstanding, outstandingOf, receivablesAging, summarizeLedger, supplierBalances } from './selectors'
 
-const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'oc-abiertas', 'certificados', 'pendientes'] as const
+const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'anticipos', 'pagos', 'costos', 'gastos-generales', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'oc-abiertas', 'certificados', 'pendientes'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
 const COMMERCIAL_VIEWS: View[] = ['cobranzas', 'comercial', 'cotizaciones', 'ordenes', 'pendientes', 'oc-abiertas', 'certificados']
-const SEARCHABLE: View[] = ['liquidaciones', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
+const SEARCHABLE: View[] = ['anticipos', 'gastos-generales', 'liquidaciones', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
   const { workspace, loading } = useWorkspace()
@@ -138,8 +141,10 @@ export function FinancePage() {
                 { value: 'facturas', label: 'Facturas', count: workspace.invoices.length },
                 { value: 'cobranzas', label: 'Cobranzas', count: workspace.invoices.filter((i) => i.lifecycle === 'issued' && outstandingOf(workspace, i) > 0).length },
                 { value: 'proveedores', label: 'Proveedores', count: workspace.obligations.filter((o) => obligationOutstanding(workspace, o) > 0 && o.lifecycle !== 'cancelled').length },
+                { value: 'anticipos', label: 'Anticipos', count: workspace.supplierPayments.filter((p) => advanceInfo(p)?.status !== undefined && advanceInfo(p)!.available > 0).length },
                 { value: 'pagos', label: 'Cobros y pagos', count: workspace.receipts.length + workspace.supplierPayments.length },
                 { value: 'costos', label: 'Costos y gastos' },
+                { value: 'gastos-generales', label: 'Gastos generales' },
                 { value: 'resultados', label: 'Resultados por proyecto' },
                 { value: 'liquidaciones', label: 'Liquidaciones', count: workspace.settlements.length },
                 { value: 'comercial', label: 'Comercial' },
@@ -280,6 +285,8 @@ export function FinancePage() {
                 {view === 'facturas' && <InvoicesView workspace={workspace} currency={currency} status={status} q={q} />}
                 {view === 'cobranzas' && <ReceivablesView workspace={workspace} currency={currency} q={q} client={client} status={status} due={params.get('venc') ?? ''} />}
                 {view === 'proveedores' && <SuppliersView workspace={workspace} currency={currency} status={status} q={q} />}
+                {view === 'anticipos' && <AdvancesView ws={workspace} currency={currency} q={q} />}
+                {view === 'gastos-generales' && <OverheadsView ws={workspace} currency={currency} q={q} />}
                 {view === 'pagos' && <PaymentsView workspace={workspace} currency={currency} direction={status} q={q} />}
                 {view === 'costos' && <CostsView workspace={workspace} currency={currency} scope={scope} q={q} />}
                 {view === 'resultados' && <ResultsView workspace={workspace} currency={currency} q={q} />}
@@ -501,7 +508,7 @@ function SuppliersView({ workspace: ws, currency, status, q = '' }: ViewProps & 
   const [dialog, setDialog] = useState<'supplier' | 'obligation' | null>(null)
   const [obligationId, setObligationId] = useState<string>()
   const [payFor, setPayFor] = useState<string>()
-  const suppliers = ws.suppliers.filter((s) => matches(q, s.name, s.contactName, ...s.categories)).sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name))
+  const suppliers = sortSuppliersNewestFirst(ws.suppliers).filter((s) => matches(q, s.name, s.contactName, ...s.categories))
   const rows = ws.obligations
     .filter(
       (o) =>

@@ -6,6 +6,7 @@ import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { appendAudit } from './audit'
 import { isMoney } from './money'
+import { assertCostsOpen } from './costControl'
 
 export interface CostInput {
   scope: 'project' | 'company'
@@ -18,6 +19,12 @@ export interface CostInput {
   amount: number
   date: string
   notes?: string
+  /** General expenses (scope company) — Phase 4.8. */
+  period?: string
+  overheadCategory?: string
+  paymentStatus?: 'pending' | 'paid'
+  paidAt?: string
+  paymentRef?: string
 }
 
 export function validateCost(ds: Dataset, input: CostInput, today: string): Record<string, string> {
@@ -36,6 +43,11 @@ export function validateCost(ds: Dataset, input: CostInput, today: string): Reco
   if (!isMoney(input.amount) || input.amount <= 0) f.amount = 'Monto mayor a cero (hasta 2 decimales).'
   if (!isIsoDate(input.date)) f.date = 'Fecha inválida.'
   else if (input.date > today) f.date = 'Un costo incurrido no puede tener fecha futura.'
+  if (input.scope === 'company') {
+    if (input.period && !/^\d{4}-(0[1-9]|1[0-2])$/.test(input.period)) f.period = 'Período AAAA-MM.'
+    if ((input.overheadCategory?.length ?? 0) > 60) f.overheadCategory = 'Máximo 60 caracteres.'
+    if (input.paymentStatus === 'paid' && (!input.paidAt || !isIsoDate(input.paidAt) || input.paidAt > today)) f.paidAt = 'Indicá la fecha de pago (no futura).'
+  }
   return f
 }
 
@@ -53,6 +65,15 @@ export function buildCost(input: CostInput, ctx: DomainContext): CostRecord {
     date: input.date,
     status: 'incurred',
     notes: input.notes?.trim() || undefined,
+    ...(input.scope === 'company'
+      ? {
+          period: input.period || input.date.slice(0, 7),
+          overheadCategory: input.overheadCategory?.trim() || undefined,
+          paymentStatus: input.paymentStatus ?? 'pending',
+          paidAt: input.paymentStatus === 'paid' ? input.paidAt : undefined,
+          paymentRef: input.paymentStatus === 'paid' ? input.paymentRef?.trim() || undefined : undefined,
+        }
+      : {}),
     createdAt: ctx.now(),
     createdBy: ctx.actorId,
   }
@@ -60,6 +81,7 @@ export function buildCost(input: CostInput, ctx: DomainContext): CostRecord {
 
 /** Records an actually incurred cost (e.g. paid directly by card). Not an estimate, not a payable. */
 export function recordCost(ds: Dataset, input: CostInput, ctx: DomainContext): { ds: Dataset; costId: string } {
+  if (input.scope === 'project') assertCostsOpen(ds, input.projectId)
   const fields = validateCost(ds, input, ctx.today())
   if (Object.keys(fields).length) throw new DomainError('Revisá el costo.', fields)
   const cost = buildCost(input, ctx)
@@ -80,4 +102,15 @@ export function voidCost(ds: Dataset, costId: string, reason: string, ctx: Domai
   }
   const next: Dataset = { ...ds, costs: replaceById(ds.costs, costId, (c) => ({ ...c, status: 'void', voidReason: reason.trim() })) }
   return appendAudit(next, { entity: 'cost', entityId: costId, action: 'void', detail: reason.trim(), projectId: cost.projectId }, ctx)
+}
+
+/** Registers the payment of a general expense on the SAME record (never a second expense). */
+export function markOverheadPaid(ds: Dataset, costId: string, input: { date: string; reference?: string }, ctx: DomainContext): Dataset {
+  const cost = findById(ds.costs, costId)
+  if (!cost || cost.scope !== 'company') throw new DomainError('El gasto general no existe.')
+  if (cost.status === 'void') throw new DomainError('El gasto está anulado.')
+  if (cost.paymentStatus === 'paid') throw new DomainError('El gasto ya figura como pagado.')
+  if (!isIsoDate(input.date) || input.date > ctx.today()) throw new DomainError('Revisá la fecha de pago.', { date: 'Fecha inválida o futura.' })
+  const next: Dataset = { ...ds, costs: replaceById(ds.costs, costId, (c) => ({ ...c, paymentStatus: 'paid', paidAt: input.date, paymentRef: input.reference?.trim() || undefined })) }
+  return appendAudit(next, { entity: 'cost', entityId: costId, action: 'overhead-paid', detail: `${cost.description}: pagado ${input.date}` }, ctx)
 }

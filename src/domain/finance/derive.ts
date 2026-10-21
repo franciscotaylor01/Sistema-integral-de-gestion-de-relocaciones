@@ -57,6 +57,7 @@ export function financeIndex(ds: Pick<Dataset, 'receipts' | 'supplierPayments'>)
   for (const p of ds.supplierPayments) {
     if (p.status !== 'recorded') continue
     for (const a of p.allocations) {
+      if (a.reversedAt) continue
       idx.paidByObligation.set(a.obligationId, addMoney(idx.paidByObligation.get(a.obligationId) ?? 0, a.amount))
       if ((idx.lastPaymentByObligation.get(a.obligationId) ?? '') < p.date) idx.lastPaymentByObligation.set(a.obligationId, p.date)
     }
@@ -111,7 +112,7 @@ export const receiptAllocated = (r: Pick<CustomerReceipt, 'allocations'>) => add
 /** Unallocated remainder of a receipt: an explicit client credit / advance. */
 export const receiptUnallocated = (r: CustomerReceipt) => (r.status === 'recorded' ? subMoney(r.amount, receiptAllocated(r)) : 0)
 
-export const supplierPaymentAllocated = (p: Pick<SupplierPayment, 'allocations'>) => addMoney(...p.allocations.map((a) => a.amount))
+export const supplierPaymentAllocated = (p: Pick<SupplierPayment, 'allocations'>) => addMoney(...p.allocations.filter((a) => !a.reversedAt).map((a) => a.amount))
 /** Unallocated remainder of a supplier payment: an explicit supplier advance. */
 export const supplierPaymentUnallocated = (p: SupplierPayment) => (p.status === 'recorded' ? subMoney(p.amount, supplierPaymentAllocated(p)) : 0)
 

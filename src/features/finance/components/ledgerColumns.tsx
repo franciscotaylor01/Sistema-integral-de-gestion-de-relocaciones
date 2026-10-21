@@ -11,6 +11,10 @@ import { formatDate } from '@/lib/dates'
 import { formatCurrency } from '@/lib/format'
 import type { CostRecord, CustomerReceipt, Invoice, SupplierObligation, SupplierPayment } from '@/types/domain'
 import { DueCell } from './DueCell'
+import { ProjectRef } from './ProjectRef'
+import { advanceInfo, possibleDuplicatePayments } from '@/domain/finance/supplierPayments'
+import { projectsOfPayment } from '@/domain/finance/supplierViews'
+import { advanceStatusMeta } from '@/config/finance'
 
 const link = 'underline-offset-4 hover:underline'
 const money = (v: number, c: Invoice['currency']) => formatCurrency(v, c, { decimals: 2 })
@@ -110,15 +114,8 @@ export function obligationColumns(ws: Workspace, opts: { withProject?: boolean; 
     opts.withProject !== false && {
       id: 'project',
       header: 'Proyecto',
-      width: '136px',
-      cell: (o) =>
-        o.projectId ? (
-          <Link to={`${projectPath(o.projectId)}?tab=finanzas`} className={cn('tabular', link)}>
-            {ws.projectById.get(o.projectId)?.code}
-          </Link>
-        ) : (
-          <span className="text-muted">General</span>
-        ),
+      width: '18%',
+      cell: (o) => <ProjectRef ws={ws} projectId={o.projectId} serviceId={o.serviceId} />,
     },
     { id: 'due', header: 'Vencimiento', width: '140px', cell: (o) => <DueCell date={o.dueDate} open={(ws.obligationFin.get(o.id)?.outstanding ?? 0) > 0 && o.lifecycle === 'approved'} /> },
     { id: 'amount', header: 'Importe', width: '132px', className: 'tabular font-medium', cell: (o) => money(o.amount, o.currency) },
@@ -203,6 +200,7 @@ export function receiptColumns(ws: Workspace, opts: { onOpen?: (id: string) => v
 }
 
 export function supplierPaymentColumns(ws: Workspace, opts: { onOpen?: (id: string) => void } = {}): Column<SupplierPayment>[] {
+  const dupes = possibleDuplicatePayments(ws.dataset)
   return [
     {
       id: 'number',
@@ -230,12 +228,29 @@ export function supplierPaymentColumns(ws: Workspace, opts: { onOpen?: (id: stri
       ),
     },
     {
+      id: 'project',
+      header: 'Proyecto',
+      width: '17%',
+      cell: (p) => {
+        const ids = projectsOfPayment(ws.dataset, p)
+        return ids.length ? (
+          <span className="flex flex-col gap-[2px]">
+            {ids.map((id) => (
+              <ProjectRef key={id} ws={ws} projectId={id} serviceId={id === p.projectId ? p.serviceId : undefined} compact />
+            ))}
+          </span>
+        ) : (
+          <span className="text-[12.5px] text-warning">Sin proyecto (revisar)</span>
+        )
+      },
+    },
+    {
       id: 'obligations',
       header: 'Aplicado a',
-      width: '18%',
+      width: '14%',
       cell: (p) => (
         <span className="block truncate text-[13.5px]">
-          {p.allocations.length ? p.allocations.map((a) => ws.obligationById.get(a.obligationId)?.reference).join(', ') : <span className="text-muted">Anticipo</span>}
+          {p.allocations.filter((a) => !a.reversedAt).length ? p.allocations.filter((a) => !a.reversedAt).map((a) => ws.obligationById.get(a.obligationId)?.reference).join(', ') : <span className="text-muted">Anticipo</span>}
         </span>
       ),
     },
@@ -247,15 +262,21 @@ export function supplierPaymentColumns(ws: Workspace, opts: { onOpen?: (id: stri
       width: '140px',
       cell: (p) => {
         const free = supplierPaymentUnallocated(p)
+        const adv = advanceInfo(p)
+        const dup = dupes.has(p.id) && <span className="mt-[2px] block text-[11.5px] font-medium text-warning">Posible duplicado</span>
         return p.status === 'reversed' ? (
           <StatusBadge meta={{ label: 'Revertido', tone: 'neutral' }} />
-        ) : free > 0 ? (
+        ) : adv ? (
           <span className="block">
-            <StatusBadge meta={{ label: 'Anticipo', tone: 'warning' }} />
-            <span className="tabular block text-[12px] text-muted">{money(free, p.currency)}</span>
+            <StatusBadge meta={advanceStatusMeta[adv.status]} />
+            {free > 0 && <span className="tabular block text-[12px] text-muted">Sin aplicar {money(free, p.currency)}</span>}
+            {dup}
           </span>
         ) : (
-          <StatusBadge meta={{ label: 'Aplicado', tone: 'success' }} />
+          <span className="block">
+            <StatusBadge meta={{ label: 'Aplicado', tone: 'success' }} />
+            {dup}
+          </span>
         )
       },
     },
@@ -279,15 +300,8 @@ export function costColumns(ws: Workspace, opts: { withProject?: boolean; onVoid
     opts.withProject !== false && {
       id: 'project',
       header: 'Proyecto',
-      width: '136px',
-      cell: (c) =>
-        c.projectId ? (
-          <Link to={`${projectPath(c.projectId)}?tab=finanzas`} className={cn('tabular', link)}>
-            {ws.projectById.get(c.projectId)?.code}
-          </Link>
-        ) : (
-          <span className="text-muted">Gasto general</span>
-        ),
+      width: '18%',
+      cell: (c) => <ProjectRef ws={ws} projectId={c.projectId} serviceId={c.serviceId} />,
     },
     { id: 'supplier', header: 'Proveedor', width: '17%', cell: (c) => <span className="block truncate text-ink-secondary">{c.supplierId ? ws.supplierById.get(c.supplierId)?.name : '—'}</span> },
     { id: 'amount', header: 'Importe', width: '140px', className: 'tabular font-medium', cell: (c) => money(c.amount, c.currency) },

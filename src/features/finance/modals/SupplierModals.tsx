@@ -310,8 +310,12 @@ function CostForm({ onClose, ws, projectId, initialScope }: { onClose: () => voi
     amount: 0,
     date: DEMO_TODAY,
     notes: '',
+    period: DEMO_TODAY.slice(0, 7),
+    overheadCategory: '',
+    paymentStatus: 'pending',
   })
   const patch = (p: Partial<CostInput>) => setInput((i) => ({ ...i, ...p }))
+  const overheadCategories = [...new Set(['Software', 'Honorarios administrativos', 'Servicios profesionales', 'Comisiones bancarias', 'Gastos de oficina', ...ws.costs.map((c) => c.overheadCategory).filter((x): x is string => Boolean(x))])]
   const categories = (Object.keys(costCategoryLabel) as CostCategory[]).filter((c) => (input.scope === 'company' ? c === 'general-expense' : c !== 'general-expense'))
 
   return (
@@ -361,6 +365,42 @@ function CostForm({ onClose, ws, projectId, initialScope }: { onClose: () => voi
             )}
           </Field>
         )}
+        {input.scope === 'company' && (
+          <>
+            <Field label="Categoría del gasto" error={errors.overheadCategory} hint="Editable: elegí una sugerida o escribí otra.">
+              {(p) => (
+                <>
+                  <TextInput {...p} list="overhead-categories" value={input.overheadCategory ?? ''} onChange={(e) => patch({ overheadCategory: e.target.value })} maxLength={60} />
+                  <datalist id="overhead-categories">
+                    {overheadCategories.map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </>
+              )}
+            </Field>
+            <Field label="Mes / período contable" required error={errors.period}>
+              {(p) => <TextInput {...p} type="month" value={input.period ?? ''} onChange={(e) => patch({ period: e.target.value })} />}
+            </Field>
+            <Field label="Estado">
+              {(p) => (
+                <SelectInput {...p} value={input.paymentStatus} onChange={(e) => patch({ paymentStatus: e.target.value as 'pending' | 'paid' })}>
+                  <option value="pending">Pendiente</option>
+                  <option value="paid">Pagado</option>
+                </SelectInput>
+              )}
+            </Field>
+            {input.paymentStatus === 'paid' && (
+              <>
+                <Field label="Fecha de pago" required error={errors.paidAt}>
+                  {(p) => <DateInput {...p} value={input.paidAt ?? ''} max={DEMO_TODAY} onChange={(e) => patch({ paidAt: e.target.value })} />}
+                </Field>
+                <Field label="Referencia de pago">{(p) => <TextInput {...p} value={input.paymentRef ?? ''} onChange={(e) => patch({ paymentRef: e.target.value })} maxLength={60} />}</Field>
+              </>
+            )}
+          </>
+        )}
+        {input.scope === 'project' && (
         <Field label="Categoría" error={errors.category}>
           {(p) => (
             <SelectInput {...p} value={input.category} onChange={(e) => patch({ category: e.target.value as CostCategory })}>
@@ -372,6 +412,7 @@ function CostForm({ onClose, ws, projectId, initialScope }: { onClose: () => voi
             </SelectInput>
           )}
         </Field>
+        )}
         <Field label="Proveedor (opcional)" error={errors.supplierId}>
           {(p) => (
             <SelectInput {...p} value={input.supplierId ?? ''} onChange={(e) => patch({ supplierId: e.target.value || undefined })}>
@@ -394,8 +435,14 @@ function CostForm({ onClose, ws, projectId, initialScope }: { onClose: () => voi
         <Field label="Fecha" required error={errors.date}>
           {(p) => <DateInput {...p} value={input.date} max={DEMO_TODAY} onChange={(e) => patch({ date: e.target.value })} />}
         </Field>
+        {input.scope === 'company' && (
+          <Field label="Observaciones" className="sm:col-span-2">
+            {(p) => <TextInput {...p} value={input.notes ?? ''} onChange={(e) => patch({ notes: e.target.value })} maxLength={300} />}
+          </Field>
+        )}
       </div>
-      <Footer onClose={onClose} busy={busy} label="Registrar costo" />
+      {errors.costClosure && <FormError message="Los costos del proyecto están cerrados: reabrilos antes de continuar." />}
+      <Footer onClose={onClose} busy={busy} label={input.scope === 'company' ? 'Registrar gasto general' : 'Registrar costo'} />
     </form>
   )
 }

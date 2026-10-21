@@ -29,10 +29,13 @@ import type { ProjectService } from '@/types/domain'
 import type { ProjectContext } from '../projectContext'
 import { projectBudget, projectEstimatedCost } from '../selectors'
 import { CommercialSection } from './CommercialSection'
+import { CostControlCard } from '@/features/finance/components/CostControlCard'
+import { isCostClosed } from '@/domain/finance/costControl'
+import { paymentsForProject } from '@/domain/finance/supplierViews'
 import { CertificatesSection } from '@/features/catalog/Certificates'
 import { effectivePolicy } from '@/domain/commercial/catalog'
 
-type Dialog = 'invoice' | 'receipt' | 'cost' | 'obligation' | 'payment' | 'settlement'
+type Dialog = 'invoice' | 'receipt' | 'cost' | 'obligation' | 'payment' | 'settlement' | 'advance'
 
 export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   const { project, workspace: ws } = ctx
@@ -45,12 +48,15 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   const [obligationId, setObligationId] = useState<string>()
   const [payFor, setPayFor] = useState<string>()
   const [voiding, setVoiding] = useState<string>()
+  const [reopenFor, setReopenFor] = useState<Dialog>()
 
   const results = useMemo(() => projectResults(ws.dataset, project, DEMO_TODAY), [ws.dataset, project])
   const invoiceIds = new Set(ctx.invoices.map((i) => i.id))
-  const obligationIds = new Set(ctx.obligations.map((o) => o.id))
   const receipts = ws.receipts.filter((r) => r.allocations.some((a) => invoiceIds.has(a.invoiceId))).sort((a, b) => b.date.localeCompare(a.date))
-  const payments = ws.supplierPayments.filter((p) => p.allocations.some((a) => obligationIds.has(a.obligationId))).sort((a, b) => b.date.localeCompare(a.date))
+  // Same collection and selector as the supplier page and Finance: payments applied here + advances for this project.
+  const payments = paymentsForProject(ws.dataset, project.id).sort((a, b) => b.date.localeCompare(a.date))
+  const closed = isCostClosed(project)
+  const guarded = (d: Dialog) => (closed ? setReopenFor(d) : setDialog(d))
   const costs = ws.costs.filter((c) => c.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date))
   const invoices = [...ctx.invoices].sort((a, b) => b.issueDate.localeCompare(a.issueDate))
   const budget = projectBudget(project)
@@ -156,13 +162,15 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
         />
       </Card>
 
+      <CostControlCard ws={ws} project={project} onOpenPayment={setPaymentId} />
+
       <Card aria-labelledby="pf-costs" className="px-[19px] pb-[19px] pt-[19px]">
         <SectionTitle
           id="pf-costs"
           title="Costos reales"
           description="Costos incurridos imputados al proyecto. Las obligaciones con proveedores generan su costo automáticamente."
           action={
-            <Button size="sm" variant="outline" onClick={() => setDialog('cost')}>
+            <Button size="sm" variant="outline" onClick={() => guarded('cost')}>
               <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
               Registrar costo
             </Button>
@@ -185,7 +193,7 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
           title="Obligaciones con proveedores"
           description="Comprobantes de proveedores imputados al proyecto"
           action={
-            <Button size="sm" variant="outline" onClick={() => setDialog('obligation')}>
+            <Button size="sm" variant="outline" onClick={() => guarded('obligation')}>
               <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
               Registrar obligación
             </Button>
@@ -206,12 +214,18 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
         <SectionTitle
           id="pf-payments"
           title="Pagos a proveedores"
-          description="Pagos aplicados a obligaciones de este proyecto"
+          description="Pagos aplicados a obligaciones de este proyecto y anticipos entregados para él."
           action={
-            <Button size="sm" variant="outline" onClick={() => setDialog('payment')}>
-              <Wallet aria-hidden className="size-[15px]" strokeWidth={2} />
-              Registrar pago
-            </Button>
+            <div className="flex flex-wrap gap-[8px]">
+              <Button size="sm" variant="outline" onClick={() => setDialog('advance')}>
+                <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+                Registrar anticipo
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setDialog('payment')}>
+                <Wallet aria-hidden className="size-[15px]" strokeWidth={2} />
+                Registrar pago
+              </Button>
+            </div>
           }
         />
         <DataTable
@@ -281,7 +295,22 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
       <RecordReceiptModal open={dialog === 'receipt'} onClose={close} workspace={ws} clientId={project.clientId} />
       <CostModal open={dialog === 'cost'} onClose={close} workspace={ws} projectId={project.id} />
       <ObligationModal open={dialog === 'obligation'} onClose={close} workspace={ws} projectId={project.id} />
-      <SupplierPaymentModal open={dialog === 'payment'} onClose={close} workspace={ws} />
+      <SupplierPaymentModal open={dialog === 'payment'} onClose={close} workspace={ws} projectId={project.id} />
+      <SupplierPaymentModal open={dialog === 'advance'} onClose={close} workspace={ws} projectId={project.id} mode="advance" />
+      <ConfirmDialog
+        open={Boolean(reopenFor)}
+        onClose={() => setReopenFor(undefined)}
+        title="Los costos del proyecto están cerrados"
+        confirmLabel="Reabrir y continuar"
+        reasonLabel="Motivo de la reapertura"
+        message="Para registrar un costo directo nuevo hay que reabrir los costos explícitamente. Queda en el historial."
+        onConfirm={async (reason) => {
+          await actions.reopenProjectCosts(project.id, reason)
+          const next = reopenFor
+          setReopenFor(undefined)
+          setDialog(next ?? null)
+        }}
+      />
       <SupplierPaymentModal open={Boolean(payFor)} onClose={() => setPayFor(undefined)} workspace={ws} obligationId={payFor} />
       <ReceiptDetailModal receiptId={receiptId} onClose={() => setReceiptId(undefined)} workspace={ws} />
       <SupplierPaymentDetailModal paymentId={paymentId} onClose={() => setPaymentId(undefined)} workspace={ws} />

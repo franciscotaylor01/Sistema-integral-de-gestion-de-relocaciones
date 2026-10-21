@@ -58,7 +58,7 @@ export function createSupplier(ds: Dataset, input: SupplierInput, requestId: str
   if (existing && ds.suppliers.some((s) => s.id === existing)) return { ds, supplierId: existing, duplicate: true }
   const fields = validateSupplier(ds, input)
   if (Object.keys(fields).length) throw new DomainError('Revisá el proveedor.', fields)
-  const supplier: Supplier = { id: ctx.newId('sup'), ...fromInput(input) }
+  const supplier: Supplier = { id: ctx.newId('sup'), ...fromInput(input), createdAt: ctx.now() }
   const next: Dataset = { ...ds, suppliers: [...ds.suppliers, supplier], requests: { ...ds.requests, [requestId]: supplier.id } }
   return { ds: appendAudit(next, { entity: 'supplier', entityId: supplier.id, action: 'create', detail: supplier.name }, ctx), supplierId: supplier.id, duplicate: false }
 }

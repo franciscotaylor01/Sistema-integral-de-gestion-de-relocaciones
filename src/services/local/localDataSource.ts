@@ -15,7 +15,7 @@ import {
   sendQuotation,
   updateQuotationDraft,
 } from '@/domain/commercial/quotations'
-import { recordCost, voidCost } from '@/domain/finance/costs'
+import { recordCost, voidCost, markOverheadPaid } from '@/domain/finance/costs'
 import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
 import { createCatalogItem, createOpenOrder, setOfferedServices, setOpenOrderStatus, setProjectException, updateCatalogItem } from '@/domain/commercial/catalog'
 import { approveCertificate, createCertificate, rejectCertificate, submitCertificate } from '@/domain/commercial/certificates'
@@ -26,7 +26,8 @@ import { addSettlementAdjustment, configureSettlement, confirmSettlement, create
 import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
 import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
 import { addCollectionAction, applyReceiptCredit, recordReceipt, reverseReceipt, addReceiptWithholdings } from '@/domain/finance/receipts'
-import { applySupplierAdvance, recordSupplierPayment, reverseSupplierPayment } from '@/domain/finance/supplierPayments'
+import { applySupplierAdvance, assignAdvanceProject, recordSupplierPayment, revertAdvanceApplication, reverseSupplierPayment } from '@/domain/finance/supplierPayments'
+import { closeProjectCosts, reopenProjectCosts } from '@/domain/finance/costControl'
 import { createAgreement, createSupplier, updateSupplier } from '@/domain/finance/suppliers'
 import { addProcedure, updateProcedure } from '@/domain/procedures'
 import { addProjectNote, createProject, updateProject } from '@/domain/projects'
@@ -206,6 +207,11 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     changeInvoiceDueDate: (id, date, reason) => simple((ds) => changeInvoiceDueDate(ds, id, date, reason, ctx)),
     addReceiptWithholdings: (id, items) => simple((ds) => addReceiptWithholdings(ds, id, items, ctx)),
     addAttachment: (input) => run((ds) => addAttachment(ds, input, ctx)),
+    closeProjectCosts: (id, notes) => simple((ds) => closeProjectCosts(ds, id, notes, ctx)),
+    reopenProjectCosts: (id, reason) => simple((ds) => reopenProjectCosts(ds, id, reason, ctx)),
+    markOverheadPaid: (id, input) => simple((ds) => markOverheadPaid(ds, id, input, ctx)),
+    revertAdvanceApplication: (id, allocationId, reason) => simple((ds) => revertAdvanceApplication(ds, id, allocationId, reason, ctx)),
+    assignAdvanceProject: (id, projectId, serviceId, reason) => simple((ds) => assignAdvanceProject(ds, id, projectId, serviceId, reason, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

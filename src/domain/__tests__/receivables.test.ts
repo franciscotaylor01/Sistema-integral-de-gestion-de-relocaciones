@@ -243,7 +243,7 @@ describe('attachments, dashboard, migration and regressions', () => {
     const storage: StorageLike = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => void (mem[k] = v), removeItem: (k) => void delete mem[k] }
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(7)
+    expect(dataset!.schemaVersion).toBe(8)
     for (const inv of v6.invoices) expect(dataset!.invoices.find((i) => i.id === inv.id)).toEqual(inv)
     expect(dataset!.invoices.filter((i) => i.legacy && i.lifecycle === 'issued').every((i) => !i.fiscal)).toBe(true)
     expect(dataset!.attachments).toEqual([])

@@ -94,6 +94,11 @@ export function useActions(): Commands {
       changeInvoiceDueDate: wrap(dataSource.changeInvoiceDueDate),
       addReceiptWithholdings: wrap(dataSource.addReceiptWithholdings),
       addAttachment: wrap(dataSource.addAttachment),
+      closeProjectCosts: wrap(dataSource.closeProjectCosts),
+      reopenProjectCosts: wrap(dataSource.reopenProjectCosts),
+      markOverheadPaid: wrap(dataSource.markOverheadPaid),
+      revertAdvanceApplication: wrap(dataSource.revertAdvanceApplication),
+      assignAdvanceProject: wrap(dataSource.assignAdvanceProject),
       resetDemoData: wrap(dataSource.resetDemoData),
     }
   }, [])

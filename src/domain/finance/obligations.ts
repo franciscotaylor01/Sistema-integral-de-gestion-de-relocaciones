@@ -1,3 +1,4 @@
+import { assertCostsOpen } from './costControl'
 import type { CostCategory, CurrencyCode, PaymentCondition, SupplierObligation } from '@/types/domain'
 import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
@@ -89,6 +90,7 @@ export function createObligation(ds: Dataset, input: ObligationInput, requestId:
   if (existing && ds.obligations.some((o) => o.id === existing)) return { ds, obligationId: existing, duplicate: true }
   const fields = validateObligation(ds, input, ctx.today())
   if (Object.keys(fields).length) throw new DomainError('Revisá la obligación.', fields)
+  assertCostsOpen(ds, input.projectId)
   const cost = buildCost(
     {
       scope: input.projectId ? 'project' : 'company',

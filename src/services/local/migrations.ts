@@ -68,12 +68,23 @@ function v6ToV7(data: Omit<Dataset, 'attachments'>): Dataset {
   return withReceivablesSeed({ ...data, schemaVersion: 7, attachments: [] })
 }
 
+/**
+ * v7 → v8: suppliers, advances, cost closure and general expenses. Purely additive:
+ * historical payments keep their behaviour (unallocated remainders stay as advances
+ * without project, flagged for review); no payment, advance, closure or payment state
+ * is inferred.
+ */
+function v7ToV8(data: Dataset): Dataset {
+  return { ...data, schemaVersion: 8 }
+}
+
 const steps: Record<number, (data: never) => unknown> = {
   2: v2ToV3 as (data: never) => unknown,
   3: v3ToV4 as (data: never) => unknown,
   4: v4ToV5 as (data: never) => unknown,
   5: v5ToV6 as (data: never) => unknown,
   6: v6ToV7 as (data: never) => unknown,
+  7: v7ToV8 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

@@ -123,6 +123,11 @@ export interface SigrDataSource {
   changeInvoiceDueDate(invoiceId: string, dueDate: string, reason: string): Promise<CommandResult>
   addReceiptWithholdings(receiptId: string, items: WithholdingInput[]): Promise<CommandResult>
   addAttachment(input: AttachmentInput): Promise<CommandResult<{ attachmentId: string }>>
+  closeProjectCosts(projectId: string, notes: string): Promise<CommandResult>
+  reopenProjectCosts(projectId: string, reason: string): Promise<CommandResult>
+  markOverheadPaid(costId: string, input: { date: string; reference?: string }): Promise<CommandResult>
+  revertAdvanceApplication(paymentId: string, allocationId: string, reason: string): Promise<CommandResult>
+  assignAdvanceProject(paymentId: string, projectId: string, serviceId: string | undefined, reason: string): Promise<CommandResult>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

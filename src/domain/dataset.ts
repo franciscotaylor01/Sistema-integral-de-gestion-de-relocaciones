@@ -33,7 +33,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
