@@ -103,7 +103,17 @@ export interface CommercialPolicy {
   billingMilestone: BillingMilestone
   /** Days a sent quotation stays valid by default. */
   quoteValidityDays: number
+  /**
+   * Phase 4.6 purchase-order modality. "open": standing PO per client/province
+   * authorising catalog items (no consumable balance); "project": PO amounts per
+   * project; "none": no PO. Absent on older data → derived from requiresPurchaseOrder.
+   */
+  poMode?: PoMode
+  /** Invoicing requires an approved certificate from the client's portal. */
+  requiresCertificate?: boolean
 }
+
+export type PoMode = 'open' | 'project' | 'none'
 
 export interface Client {
   id: string
@@ -121,6 +131,8 @@ export interface Client {
   clientSince: string
   contacts: ClientContact[]
   policy: CommercialPolicy
+  /** Main services Relocare offers this client (absent = all active services). */
+  offeredServices?: ServiceTypeId[]
   notes?: string
 }
 
@@ -149,8 +161,16 @@ export interface PriceEntry {
   validFrom: string
   validTo?: string
   active: boolean
+  /** Phase 4.6: sub-service (catalog item) this price is for; absent = whole service. */
+  itemId?: string
   /** Contract / agreement the price comes from. */
   agreement?: string
+  /** Commercial approval. Approved prices are never edited: a change creates a new version. */
+  approvedAt?: string
+  approvedBy?: string
+  approvalRef?: string
+  supersedesId?: string
+  supersededById?: string
   notes?: string
   createdAt: string
   updatedAt: string
@@ -236,6 +256,11 @@ export interface ProjectRecord {
   notes?: string
   purchaseOrder?: string
   financial?: FinancialRefs
+  /** Phase 4.6: province / region the work is authorised for, and the open PO applied. */
+  province?: string
+  openOrderId?: string
+  /** Explicit per-project exception to the client's commercial policy. */
+  commercialException?: { poMode?: PoMode; requiresCertificate?: boolean; reason: string }
   createdAt: string
   updatedAt: string
 }
@@ -254,8 +279,10 @@ export interface ServiceRecord {
   completedAt?: string
   stages: WorkflowStage[]
   notes: OperationalNote[]
-  /** Agreed sale price (project currency). Reference only, no calculations yet. */
+  /** Agreed sale price (project currency). With sub-service items it equals their total. */
   price?: number
+  /** Phase 4.6: contracted sub-services with their frozen (historical) prices. */
+  items?: ServiceItem[]
   /** Expected supplier cost (project currency). Reference only. */
   estimatedCost?: number
   financial?: FinancialRefs
@@ -381,6 +408,10 @@ export interface InvoiceLine {
   unitPrice: number
   /** Pass-through expense not covered by the commercial approval (explicit). */
   reimbursable?: boolean
+  /** Phase 4.6 breakdown and traceability. */
+  serviceItemId?: string
+  openOrderId?: string
+  certificateId?: string
 }
 
 export interface TaxComponent {
@@ -838,4 +869,96 @@ export interface ProjectSettlement {
   notes?: string
   createdAt: string
   createdBy: string
+}
+
+/* ───────────── Phase 4.6 — hierarchical catalog, open POs, certificates ───────────── */
+
+/** Billable sub-service of a main service (commercial item, not an operational task). */
+export interface CatalogItem {
+  id: string
+  serviceTypeId: ServiceTypeId
+  name: string
+  description?: string
+  unit: PriceUnit
+  active: boolean
+  createdAt: string
+}
+
+/** A contracted sub-service inside a project service, with its price frozen at contracting time. */
+export interface ServiceItem {
+  id: string
+  catalogItemId: string
+  name: string
+  unit: PriceUnit
+  quantity: number
+  unitPrice: number
+  /** Where the price came from (open PO item, tariff entry or manual). */
+  source: 'open-order' | 'tariff' | 'manual'
+  sourceRef?: string
+}
+
+export type OpenOrderStatus = 'active' | 'suspended' | 'expired' | 'cancelled'
+
+export interface OpenOrderItem {
+  id: string
+  serviceTypeId: ServiceTypeId
+  /** Absent = the main service billed as a single line. */
+  catalogItemId?: string
+  unit: PriceUnit
+  unitPrice: number
+}
+
+/** Standing purchase order by client and province: authorises items, reusable without balance. */
+export interface OpenPurchaseOrder {
+  id: string
+  /** Official number on the client's document. */
+  number: string
+  clientId: string
+  province: string
+  currency: CurrencyCode
+  validFrom: string
+  validTo?: string
+  status: OpenOrderStatus
+  conditions?: string
+  items: OpenOrderItem[]
+  documentRef: string
+  createdAt: string
+  createdBy: string
+}
+
+export type CertificateStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
+
+export interface CertificateLine {
+  id: string
+  serviceId: string
+  /** Contracted sub-service; absent for services billed as a single line. */
+  serviceItemId?: string
+  description: string
+  quantity: number
+  unitPrice: number
+}
+
+/** Client certificate (generated on the client's external portal; SIGR only records it). */
+export interface Certificate {
+  id: string
+  /** Internal "CER-2026-0001". */
+  number: string
+  externalNumber?: string
+  clientId: string
+  projectId: string
+  openOrderId?: string
+  purchaseOrderId?: string
+  currency: CurrencyCode
+  lines: CertificateLine[]
+  status: CertificateStatus
+  createdAt: string
+  submittedAt?: string
+  approvedAt?: string
+  rejectedAt?: string
+  rejectionReason?: string
+  /** Explicit correction allowing items already certified to be certified again. */
+  correctionReason?: string
+  notes?: string
+  documentRef: string
+  history: { id: string; date: string; actorId: string; action: string; reason?: string }[]
 }

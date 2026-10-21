@@ -17,6 +17,9 @@ import {
 } from '@/domain/commercial/quotations'
 import { recordCost, voidCost } from '@/domain/finance/costs'
 import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
+import { createCatalogItem, createOpenOrder, setOfferedServices, setOpenOrderStatus, setProjectException, updateCatalogItem } from '@/domain/commercial/catalog'
+import { approveCertificate, createCertificate, rejectCertificate, submitCertificate } from '@/domain/commercial/certificates'
+import { approvePriceEntry } from '@/domain/commercial/pricing'
 import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation } from '@/domain/finance/settlements'
 import { cancelInvoice, createInvoiceDraft, issueInvoice, updateInvoiceDraft } from '@/domain/finance/invoices'
 import { approveObligation, cancelObligation, createObligation, updateObligationTerms } from '@/domain/finance/obligations'
@@ -25,7 +28,7 @@ import { applySupplierAdvance, recordSupplierPayment, reverseSupplierPayment } f
 import { createAgreement, createSupplier, updateSupplier } from '@/domain/finance/suppliers'
 import { addProcedure, updateProcedure } from '@/domain/procedures'
 import { addProjectNote, createProject, updateProject } from '@/domain/projects'
-import { addService, updateService } from '@/domain/services'
+import { addService, updateService, updateServiceItems } from '@/domain/services'
 import { createTask, updateTask } from '@/domain/tasks'
 import { addWorkNote, applyStageAction, completeWork, reopenWork, setWorkStatus } from '@/domain/workItems'
 import type { SigrDataSource } from '../dataSource'
@@ -183,6 +186,18 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     linkSettlementObligation: (id, obligationId) => simple((ds) => linkSettlementObligation(ds, id, obligationId, ctx)),
     unlinkSettlementObligation: (id, obligationId, reason) => simple((ds) => unlinkSettlementObligation(ds, id, obligationId, reason, ctx)),
     confirmSettlement: (id, note) => simple((ds) => confirmSettlement(ds, id, note, ctx)),
+    createCatalogItem: (input) => run((ds) => createCatalogItem(ds, input, ctx)),
+    updateCatalogItem: (id, input) => simple((ds) => updateCatalogItem(ds, id, input, ctx)),
+    setOfferedServices: (clientId, typeIds) => simple((ds) => setOfferedServices(ds, clientId, typeIds, ctx)),
+    approvePriceEntry: (id, ref) => simple((ds) => approvePriceEntry(ds, id, ref, ctx)),
+    createOpenOrder: (input, requestId) => run((ds) => createOpenOrder(ds, input, requestId, ctx)),
+    setOpenOrderStatus: (id, status) => simple((ds) => setOpenOrderStatus(ds, id, status, ctx)),
+    updateServiceItems: (id, items) => simple((ds) => updateServiceItems(ds, id, items, ctx)),
+    createCertificate: (input, requestId) => run((ds) => createCertificate(ds, input, requestId, ctx)),
+    submitCertificate: (id, input) => simple((ds) => submitCertificate(ds, id, input, ctx)),
+    approveCertificate: (id, input) => simple((ds) => approveCertificate(ds, id, input, ctx)),
+    rejectCertificate: (id, reason) => simple((ds) => rejectCertificate(ds, id, reason, ctx)),
+    setProjectException: (id, ex) => simple((ds) => setProjectException(ds, id, ex, ctx)),
 
     resetDemoData: async () => {
       clearDataset(storage)

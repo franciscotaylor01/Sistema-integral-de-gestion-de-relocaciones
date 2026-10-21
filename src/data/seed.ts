@@ -1,3 +1,4 @@
+import { withCatalogSeed } from './catalogSeed'
 import { getProcedureType } from '@/config/procedureCatalog'
 import { getServiceType } from '@/config/serviceCatalog'
 import { getWorkflowTemplate } from '@/config/workflowTemplates'
@@ -62,7 +63,8 @@ function buildStages(templateId: string, idPrefix: string, start: string, due: s
   })
 }
 
-export function buildSeedDataset(): Dataset {
+/** Seed up to Phase 4.5 (used to build legacy fixtures in tests). */
+export function buildBaseSeedDataset(): Dataset {
   const people: Person[] = mockAssignees.flatMap((a) => [
     { id: personId(a.id), name: a.name, nationality: a.nationality, email: a.email, jobTitle: a.jobTitle, employerId: a.clientId },
     ...a.family.map((f) => ({ id: personId(f.id), name: f.name, nationality: a.nationality, age: f.age })),
@@ -208,7 +210,7 @@ export function buildSeedDataset(): Dataset {
     { suppliers: mockSuppliers, invoices: mockInvoices, payables: mockPayables, payments: mockPayments },
   )
 
-  return {
+  const dataset = {
     schemaVersion: SCHEMA_VERSION,
     staff: mockStaff,
     clients: base.clients,
@@ -226,6 +228,11 @@ export function buildSeedDataset(): Dataset {
     ...commercial,
     requests: {},
   }
+  return { ...dataset, catalogItems: [], openOrders: [], certificates: [] }
+}
+
+export function buildSeedDataset(): Dataset {
+  return withCatalogSeed(buildBaseSeedDataset())
 }
 
 const SEED_TIME = '2026-01-05T09:00:00'

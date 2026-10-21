@@ -4,6 +4,8 @@ import { cn } from '@/lib/cn'
 import { ServiceChip } from './ServiceChip'
 
 interface ServiceTypeGridProps {
+  /** Restrict to these service types (e.g. those offered to the client). */
+  only?: string[]
   selected: string[]
   onToggle: (typeId: string) => void
   multiple?: boolean
@@ -13,10 +15,10 @@ interface ServiceTypeGridProps {
 }
 
 /** Selectable service catalog cards (radio or checkbox semantics). */
-export function ServiceTypeGrid({ selected, onToggle, multiple, label, existing = [] }: ServiceTypeGridProps) {
+export function ServiceTypeGrid({ selected, onToggle, multiple, label, existing = [], only }: ServiceTypeGridProps) {
   return (
     <div role={multiple ? 'group' : 'radiogroup'} aria-label={label} className="grid grid-cols-1 gap-[8px] min-[460px]:grid-cols-2 lg:grid-cols-3">
-      {activeServiceTypes().map((t) => {
+      {activeServiceTypes().filter((t) => !only || only.includes(t.id)).map((t) => {
         const on = selected.includes(t.id)
         return (
           <button

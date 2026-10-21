@@ -1,3 +1,6 @@
+import type { CatalogItemInput, OpenOrderInput, ServiceItemInput } from '@/domain/commercial/catalog'
+import type { CertificateInput } from '@/domain/commercial/certificates'
+import type { OpenOrderStatus, ProjectRecord } from '@/types/domain'
 import type { SettlementInput } from '@/domain/finance/settlements'
 import type { SettlementRelease, SettlementRule } from '@/types/domain'
 import type { Dataset } from '@/domain/dataset'
@@ -99,6 +102,18 @@ export interface SigrDataSource {
   linkSettlementObligation(settlementId: string, obligationId: string): Promise<CommandResult>
   unlinkSettlementObligation(settlementId: string, obligationId: string, reason: string): Promise<CommandResult>
   confirmSettlement(settlementId: string, note: string): Promise<CommandResult>
+  createCatalogItem(input: CatalogItemInput): Promise<CommandResult<{ itemId: string }>>
+  updateCatalogItem(itemId: string, input: CatalogItemInput): Promise<CommandResult>
+  setOfferedServices(clientId: string, typeIds: string[]): Promise<CommandResult>
+  approvePriceEntry(entryId: string, approvalRef: string): Promise<CommandResult>
+  createOpenOrder(input: OpenOrderInput, requestId: string): Promise<CommandResult<{ openOrderId: string; duplicate: boolean }>>
+  setOpenOrderStatus(openOrderId: string, status: OpenOrderStatus): Promise<CommandResult>
+  updateServiceItems(serviceId: string, items: ServiceItemInput[]): Promise<CommandResult>
+  createCertificate(input: CertificateInput, requestId: string): Promise<CommandResult<{ certificateId: string; duplicate: boolean }>>
+  submitCertificate(certificateId: string, input: { externalNumber: string; date: string }): Promise<CommandResult>
+  approveCertificate(certificateId: string, input: { date: string }): Promise<CommandResult>
+  rejectCertificate(certificateId: string, reason: string): Promise<CommandResult>
+  setProjectException(projectId: string, exception: ProjectRecord['commercialException'] | null): Promise<CommandResult>
 
   /** Discards local changes and restores the original demo dataset. */
   resetDemoData(): Promise<CommandResult>

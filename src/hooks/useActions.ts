@@ -76,6 +76,18 @@ export function useActions(): Commands {
       linkSettlementObligation: wrap(dataSource.linkSettlementObligation),
       unlinkSettlementObligation: wrap(dataSource.unlinkSettlementObligation),
       confirmSettlement: wrap(dataSource.confirmSettlement),
+      createCatalogItem: wrap(dataSource.createCatalogItem),
+      updateCatalogItem: wrap(dataSource.updateCatalogItem),
+      setOfferedServices: wrap(dataSource.setOfferedServices),
+      approvePriceEntry: wrap(dataSource.approvePriceEntry),
+      createOpenOrder: wrap(dataSource.createOpenOrder),
+      setOpenOrderStatus: wrap(dataSource.setOpenOrderStatus),
+      updateServiceItems: wrap(dataSource.updateServiceItems),
+      createCertificate: wrap(dataSource.createCertificate),
+      submitCertificate: wrap(dataSource.submitCertificate),
+      approveCertificate: wrap(dataSource.approveCertificate),
+      rejectCertificate: wrap(dataSource.rejectCertificate),
+      setProjectException: wrap(dataSource.setProjectException),
       resetDemoData: wrap(dataSource.resetDemoData),
     }
   }, [])

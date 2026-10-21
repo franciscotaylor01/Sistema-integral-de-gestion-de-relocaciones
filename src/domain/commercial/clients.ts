@@ -1,4 +1,4 @@
-import type { BillingMilestone, Client, ClientContact, ClientStatus, CountryCode, CurrencyCode } from '@/types/domain'
+import type { BillingMilestone, Client, ClientContact, ClientStatus, CountryCode, CurrencyCode, PoMode } from '@/types/domain'
 import { logActivityGlobal } from './activity'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
@@ -31,6 +31,9 @@ export interface ClientInput {
   requiresApprovedQuote: boolean
   billingMilestone: BillingMilestone
   quoteValidityDays: number
+  /** Phase 4.6: PO modality and mandatory certification. */
+  poMode?: PoMode
+  requiresCertificate?: boolean
   contacts: ContactInput[]
   notes?: string
 }
@@ -97,10 +100,12 @@ function fromInput(input: ClientInput, ctx: DomainContext): Omit<Client, 'id' | 
     paymentTermsDays: input.paymentTermsDays,
     contacts: buildContacts(input.contacts, ctx),
     policy: {
-      requiresPurchaseOrder: input.requiresPurchaseOrder,
+      requiresPurchaseOrder: (input.poMode ?? (input.requiresPurchaseOrder ? 'project' : 'none')) !== 'none',
       requiresApprovedQuote: input.requiresApprovedQuote,
       billingMilestone: input.billingMilestone,
       quoteValidityDays: input.quoteValidityDays,
+      poMode: input.poMode ?? (input.requiresPurchaseOrder ? 'project' : 'none'),
+      requiresCertificate: input.requiresCertificate || undefined,
     },
     notes: input.notes?.trim() || undefined,
   }

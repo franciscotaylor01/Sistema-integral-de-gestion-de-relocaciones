@@ -11,7 +11,7 @@ describe('createProject', () => {
     const project = next.projects.find((p) => p.id === projectId)!
 
     expect(duplicate).toBe(false)
-    expect(project.code).toBe('REL-2026-0163')
+    expect(project.code).toBe('REL-2026-0165')
     expect(project.operationalStatus).toBe('onboarding')
     expect(project.currency).toBe('USD') // client billing currency
 
@@ -56,8 +56,8 @@ describe('createProject', () => {
     const ctx = testContext()
     const a = createProject(seed(), projectInput(), 'a', ctx)
     const b = createProject(a.ds, projectInput(), 'b', ctx)
-    expect(b.ds.projects.at(-1)!.code).toBe('REL-2026-0164')
-    expect(nextProjectCode(b.ds, '2027-01-02')).toBe('REL-2027-0165')
+    expect(b.ds.projects.at(-1)!.code).toBe('REL-2026-0166')
+    expect(nextProjectCode(b.ds, '2027-01-02')).toBe('REL-2027-0167')
   })
 
   it('validates required fields and date relationships', () => {

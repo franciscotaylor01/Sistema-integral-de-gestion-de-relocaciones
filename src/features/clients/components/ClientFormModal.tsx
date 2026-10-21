@@ -15,7 +15,7 @@ import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
 import { CURRENCY_ORDER } from '@/lib/money'
-import type { BillingMilestone, Client, ClientStatus, CountryCode, CurrencyCode } from '@/types/domain'
+import type { BillingMilestone, Client, ClientStatus, CountryCode, CurrencyCode, PoMode } from '@/types/domain'
 
 interface ClientFormModalProps {
   open: boolean
@@ -57,6 +57,8 @@ function toInput(c: Client | undefined, defaultManager: string): ClientInput {
     requiresApprovedQuote: c?.policy.requiresApprovedQuote ?? true,
     billingMilestone: c?.policy.billingMilestone ?? 'service-completed',
     quoteValidityDays: c?.policy.quoteValidityDays ?? 30,
+    poMode: c?.policy.poMode ?? (c ? (c.policy.requiresPurchaseOrder ? 'project' : 'none') : 'project'),
+    requiresCertificate: c?.policy.requiresCertificate ?? false,
     contacts: c?.contacts.map((x) => ({ ...x, primary: Boolean(x.primary) })) ?? [{ name: '', role: '', email: '', phone: '', primary: true }],
     notes: c?.notes ?? '',
   }
@@ -240,11 +242,20 @@ function ClientForm({ onClose, workspace: ws, client }: ClientFormModalProps) {
           </div>
         </div>
         <div className="grid gap-[10px] sm:grid-cols-2">
+          <Field label="Modalidad de orden de compra">
+            {(p) => (
+              <SelectInput {...p} value={input.poMode} onChange={(e) => patch({ poMode: e.target.value as PoMode, requiresPurchaseOrder: e.target.value !== 'none' })}>
+                <option value="open">OC abierta por cliente / provincia</option>
+                <option value="project">OC por proyecto</option>
+                <option value="none">Sin OC obligatoria</option>
+              </SelectInput>
+            )}
+          </Field>
           <Switch
-            checked={input.requiresPurchaseOrder}
-            onChange={(v) => patch({ requiresPurchaseOrder: v })}
-            label="Exige orden de compra"
-            description="Sin OC del cliente no se puede facturar."
+            checked={Boolean(input.requiresCertificate)}
+            onChange={(v) => patch({ requiresCertificate: v })}
+            label="Exige certificado aprobado"
+            description="Se factura solo lo certificado y aprobado en el portal del cliente."
           />
           <Switch
             checked={input.requiresApprovedQuote}

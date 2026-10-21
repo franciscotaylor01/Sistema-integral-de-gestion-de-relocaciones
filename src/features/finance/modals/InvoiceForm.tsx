@@ -105,7 +105,7 @@ export function InvoiceForm({ input, onChange, project, workspace: ws, errors, f
                         const v = ev.target.value
                         if (v === '__reimb') return setLine(i, { serviceId: undefined, reimbursable: true, purchaseOrderId: undefined, quotationId: undefined })
                         const bb = billable.get(v)
-                        setLine(i, { serviceId: v, reimbursable: false, purchaseOrderId: bb?.purchaseOrderId, quotationId: bb?.quotationId })
+                        setLine(i, { serviceId: v, reimbursable: false, purchaseOrderId: bb?.purchaseOrderId, quotationId: bb?.quotationId, serviceItemId: undefined, certificateId: undefined })
                       }}
                     >
                       <option value="">Elegí un servicio</option>
@@ -121,6 +121,18 @@ export function InvoiceForm({ input, onChange, project, workspace: ws, errors, f
                 <Field label="Descripción" required error={e('description')} className="sm:col-span-2 xl:col-span-4">
                   {(p) => <TextInput {...p} value={l.description} onChange={(ev) => setLine(i, { description: ev.target.value })} maxLength={160} />}
                 </Field>
+                {(l.serviceItemId || l.certificateId || l.openOrderId || errors[`lines.${i}.certificateId`]) && (
+                  <p className="text-[12px] text-muted sm:col-span-full">
+                    {[
+                      l.serviceItemId && 'Subservicio contratado',
+                      l.certificateId && `Certificado ${ws.certificates.find((c) => c.id === l.certificateId)?.externalNumber ?? ''}`,
+                      l.openOrderId && `OC abierta ${ws.openOrders.find((o) => o.id === l.openOrderId)?.number ?? ''}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
+                    {errors[`lines.${i}.certificateId`] && <span className="block font-medium text-danger">{errors[`lines.${i}.certificateId`]}</span>}
+                  </p>
+                )}
                 <Field label="Cantidad" required error={e('quantity')}>
                   {(p) => <TextInput {...p} type="number" min={0} step="any" value={l.quantity || ''} onChange={(ev) => setLine(i, { quantity: Number(ev.target.value) })} />}
                 </Field>

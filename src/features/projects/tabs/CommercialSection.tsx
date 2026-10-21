@@ -19,6 +19,10 @@ import { getServiceType } from '@/config/serviceCatalog'
 import { hasAmount, sumAmounts, type Amounts } from '@/domain/commercial/money'
 import { projectCommercial, type ServiceCommercial } from '@/domain/commercial/traceability'
 import { DomainError } from '@/domain/errors'
+import { effectivePolicy } from '@/domain/commercial/catalog'
+import { poModeLabel } from '@/features/catalog/meta'
+import { ServiceItemsModal } from '@/features/catalog/ServiceItemsModal'
+import { ExceptionModal } from '@/features/catalog/ExceptionModal'
 import { billedByService } from '@/domain/finance/invoices'
 import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/columns'
 import { PurchaseOrderModal } from '@/features/commercial/PurchaseOrderModal'
@@ -56,6 +60,10 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
   const draft = quotations.find((q) => q.status === 'draft')
   const hasApproved = quotations.some((q) => q.status === 'approved' && !q.supersededById)
   const policy = client?.policy
+  const eff = effectivePolicy(client, project)
+  const openOrder = project.openOrderId ? ws.openOrders.find((o) => o.id === project.openOrderId) : undefined
+  const [editingItems, setEditingItems] = useState<ProjectService>()
+  const [excepting, setExcepting] = useState(false)
 
   const newQuotation = async () => {
     if (draft) return navigate(quotationPath(draft.id))
@@ -81,10 +89,20 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
       {policy && client && (
         <div className="flex flex-wrap items-center gap-x-[14px] gap-y-[8px] rounded-card bg-surface px-[18px] py-[14px] text-[13.5px] shadow-card">
           <span className="font-semibold">Política comercial de {client.name}</span>
-          <MetaBadge className={policy.requiresPurchaseOrder ? undefined : 'bg-success-soft text-success'}>{policy.requiresPurchaseOrder ? 'Exige OC' : 'No exige OC'}</MetaBadge>
+          <MetaBadge className={eff.poMode === 'none' ? 'bg-success-soft text-success' : undefined}>{poModeLabel[eff.poMode]}</MetaBadge>
+          {openOrder && (
+            <MetaBadge className="bg-info-soft text-info">
+              OC {openOrder.number} · {openOrder.province}
+            </MetaBadge>
+          )}
+          {eff.requiresCertificate && <MetaBadge className="bg-warning-soft text-warning">Exige certificado aprobado</MetaBadge>}
+          {project.commercialException && <MetaBadge>Excepción del proyecto: {project.commercialException.reason}</MetaBadge>}
           <MetaBadge>{policy.requiresApprovedQuote ? 'Exige cotización aprobada' : 'Cotización opcional'}</MetaBadge>
           <MetaBadge>Factura {billingMilestoneLabel[policy.billingMilestone].toLowerCase()}</MetaBadge>
-          <Link to={`${clientPath(client.id)}`} className={`ml-auto text-ink-secondary ${link}`}>
+          <button type="button" onClick={() => setExcepting(true)} className={`ml-auto text-ink-secondary ${link}`}>
+            {project.commercialException ? 'Editar excepción' : 'Excepción del proyecto'}
+          </button>
+          <Link to={`${clientPath(client.id)}`} className={`text-ink-secondary ${link}`}>
             Ver cliente
           </Link>
         </div>
@@ -128,9 +146,19 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
               header: 'Servicio',
               width: '17%',
               cell: (s) => (
-                <span className="flex min-w-0 items-center gap-[10px]">
+                <span className="flex min-w-0 items-start gap-[10px]">
                   <ServiceChip type={s.typeId} />
-                  <span className="truncate font-medium">{getServiceType(s.typeId).label}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{getServiceType(s.typeId).label}</span>
+                    {s.items?.length ? (
+                      <span className="block whitespace-normal text-[12px] leading-[1.35] text-muted">{s.items.map((i) => `${i.name} ×${i.quantity}`).join(' · ')}</span>
+                    ) : null}
+                    {ws.catalogItems.some((c) => c.serviceTypeId === s.typeId) && (
+                      <button type="button" onClick={() => setEditingItems(s)} className="text-[12px] font-medium text-ink-secondary underline-offset-2 hover:underline">
+                        {s.items?.length ? 'Editar subservicios' : 'Detallar subservicios'}
+                      </button>
+                    )}
+                  </span>
                 </span>
               ),
             },
@@ -165,6 +193,9 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
                 )
               },
             },
+            ...(eff.requiresCertificate
+              ? [{ id: 'certified', header: 'Certificado aprob.', width: '10%', cell: (s: ProjectService) => <AmountsText amounts={commercial.get(s.id)!.certified} /> }]
+              : []),
             {
               id: 'billed',
               header: 'Facturado',
@@ -178,7 +209,7 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
               cell: (s) => {
                 const c = commercial.get(s.id)!
                 const invoices = ws.invoices.filter((i) => i.projectId === project.id && i.lifecycle !== 'cancelled' && i.lines.some((l) => l.serviceId === s.id))
-                if (!c.quotations.length && !c.purchaseOrders.length && !invoices.length) return <span className="text-muted">—</span>
+                if (!c.quotations.length && !c.purchaseOrders.length && !invoices.length && !c.openOrder) return <span className="text-muted">—</span>
                 return (
                   <span className="flex flex-col text-[12.5px]">
                     {latestVersions(c.quotations).map((q) => (
@@ -186,6 +217,7 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
                         {q.number} v{q.version}
                       </Link>
                     ))}
+                    {c.openOrder && <span className="tabular truncate text-ink-secondary">OC abierta {c.openOrder.number}</span>}
                     {c.purchaseOrders.map((p) => (
                       <Link key={p.id} to={purchaseOrderPath(p.id)} className={`tabular truncate text-ink-secondary ${link}`}>
                         OC {p.clientPoNumber}
@@ -263,6 +295,8 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
         />
       </Card>
 
+      <ExceptionModal open={excepting} onClose={() => setExcepting(false)} project={project} />
+      <ServiceItemsModal service={editingItems} project={project} ws={ws} onClose={() => setEditingItems(undefined)} />
       <PurchaseOrderModal open={creatingPo} onClose={() => setCreatingPo(false)} workspace={ws} project={project} />
     </div>
   )

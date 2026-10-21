@@ -8,6 +8,7 @@ import { DomainError, isIsoDate } from './errors'
 import { spawnStageTasks } from './tasks'
 import { instantiateStages } from './workflow'
 import { resolvePrice } from './commercial/pricing'
+import { buildServiceItems, effectivePolicy, isServiceOffered, itemsTotal, resolveItemPrice, validateServiceItems, type ServiceItemInput } from './commercial/catalog'
 
 export interface NewServiceInput {
   typeId: string
@@ -18,6 +19,22 @@ export interface NewServiceInput {
   /** Start the workflow right away (first stage becomes current). */
   startNow?: boolean
   price?: number
+  /** Phase 4.6: contracted sub-services. When present, the service price is their total. */
+  items?: ServiceItemInput[]
+}
+
+/** Commercial checks that need the project: offered service, open-PO authorisation and item prices. */
+export function validateServiceCommercial(ds: Dataset, project: ProjectRecord, input: NewServiceInput): Record<string, string> {
+  const f: Record<string, string> = {}
+  const client = findById(ds.clients, project.clientId)
+  if (input.typeId && !isServiceOffered(client, input.typeId)) f.typeId = 'Servicio no incluido en el tarifario del cliente.'
+  if (input.items?.length) {
+    for (const [k, v] of Object.entries(validateServiceItems(ds, project, input.typeId, input.items, input.startDate))) f[k] = v
+  } else if (input.typeId && effectivePolicy(client, project).poMode === 'open' && !input.price) {
+    const p = resolveItemPrice(ds, project, input.typeId, undefined, input.startDate)
+    if (!p) f.typeId = 'La OC abierta del proyecto no autoriza este servicio sin subservicios.'
+  }
+  return f
 }
 
 /** Field errors for a service, keyed by field name (prefix them for nested forms). */
@@ -55,7 +72,10 @@ function priceFromList(ds: Dataset, project: ProjectRecord, typeId: string, date
 /** Builds a service record (no activity) — shared by project creation and addService. */
 export function buildService(ds: Dataset, project: ProjectRecord, input: NewServiceInput, ctx: DomainContext): ServiceRecord {
   const type = getServiceType(input.typeId)
-  const fromList = input.price === undefined ? priceFromList(ds, project, input.typeId, input.startDate) : undefined
+  const items = input.items?.length ? buildServiceItems(ds, project, type.id, input.items, input.startDate, ctx) : undefined
+  // Open PO price for a service billed as a single line takes precedence over the tariff.
+  const fromOrder = !items && input.price === undefined ? resolveItemPrice(ds, project, type.id, undefined, input.startDate) : undefined
+  const fromList = !items && !fromOrder && input.price === undefined ? priceFromList(ds, project, input.typeId, input.startDate) : undefined
   return {
     id: ctx.newId('svc'),
     projectId: project.id,
@@ -68,7 +88,9 @@ export function buildService(ds: Dataset, project: ProjectRecord, input: NewServ
     dueDate: input.dueDate,
     stages: instantiateStages(type.workflowTemplateId, input.startDate, input.dueDate, ctx, { activateFirst: input.startNow }),
     notes: [],
-    price: input.price ?? fromList?.price,
+    // Never both: with items the price is exactly their total.
+    price: items ? itemsTotal(items) : (input.price ?? fromOrder?.unitPrice ?? fromList?.price),
+    items,
     financial: fromList ? { priceListId: fromList.priceEntryId } : undefined,
   }
 }
@@ -87,7 +109,7 @@ export function addService(ds: Dataset, projectId: string, input: NewServiceInpu
   if (project.operationalStatus === 'completed' || project.operationalStatus === 'cancelled') {
     throw new DomainError('No se pueden agregar servicios a un proyecto cerrado.')
   }
-  const fields = validateServiceInput(ds, input, project)
+  const fields = { ...validateServiceInput(ds, input, project), ...validateServiceCommercial(ds, project, input) }
   if (Object.keys(fields).length) throw new DomainError('Revisá los datos del servicio.', fields)
   const service = buildService(ds, project, input, ctx)
   let next = insertService(ds, service, ctx)
@@ -134,4 +156,40 @@ export function updateService(ds: Dataset, serviceId: string, patch: ServicePatc
     ctx,
   )
   return { ...next, projects: replaceById(next.projects, service.projectId, (p) => ({ ...p, updatedAt: ctx.now() })) }
+}
+
+/**
+ * Changes the contracted sub-services of a service. Existing items keep their
+ * frozen price; new ones take today's price. Quantities cannot drop below what
+ * is already certified or invoiced.
+ */
+export function updateServiceItems(ds: Dataset, serviceId: string, items: ServiceItemInput[], ctx: DomainContext): Dataset {
+  const service = findById(ds.services, serviceId)
+  if (!service) throw new DomainError('El servicio no existe.')
+  const project = findById(ds.projects, service.projectId)!
+  const date = ctx.today()
+  const f = validateServiceItems(ds, project, service.typeId, items, date)
+  // Already-contracted items are valid even if the open PO changed later (prices are historical).
+  for (const k of Object.keys(f)) {
+    const i = Number(k.split('.')[1])
+    if (service.items?.some((x) => x.catalogItemId === items[i]?.catalogItemId) && !k.endsWith('quantity')) delete f[k]
+  }
+  const used = (itemId: string) => {
+    let q = 0
+    for (const c of ds.certificates) if (c.status !== 'rejected') for (const l of c.lines) if (l.serviceItemId === itemId) q += l.quantity
+    for (const inv of ds.invoices) if (inv.lifecycle !== 'cancelled') for (const l of inv.lines) if (l.serviceItemId === itemId) q = Math.max(q, l.quantity)
+    return Math.round(q * 1000) / 1000
+  }
+  for (const prev of service.items ?? []) {
+    const idx = items.findIndex((i) => i.catalogItemId === prev.catalogItemId)
+    const min = used(prev.id)
+    if (min > 0 && (idx < 0 || items[idx].quantity < min)) f[idx < 0 ? 'items' : `items.${idx}.quantity`] = `${prev.name} ya tiene ${min} certificado/facturado: no puede quedar por debajo.`
+  }
+  if (Object.keys(f).length) throw new DomainError('Revisá los subservicios.', f)
+  const built = items.length ? buildServiceItems(ds, project, service.typeId, items, date, ctx, service.items) : undefined
+  const next: Dataset = {
+    ...ds,
+    services: replaceById(ds.services, serviceId, (s) => ({ ...s, items: built, price: built ? itemsTotal(built) : s.items?.length ? undefined : s.price })),
+  }
+  return logActivity(next, { projectId: project.id, serviceId, kind: 'commercial', message: `Subservicios de ${getServiceType(service.typeId).label} actualizados (${built?.length ?? 0}).` }, ctx)
 }

@@ -2,6 +2,7 @@ import { projectCategoryLabel } from '@/config/catalogs'
 import { getServiceType } from '@/config/serviceCatalog'
 import type {
   CountryCode,
+  CurrencyCode,
   Location,
   ParticipantRole,
   Person,
@@ -16,7 +17,8 @@ import { findById, replaceById } from './collections'
 import type { DomainContext } from './context'
 import type { Dataset } from './dataset'
 import { DomainError, isIsoDate } from './errors'
-import { buildService, insertService, validateServiceInput, type NewServiceInput } from './services'
+import { buildService, insertService, validateServiceCommercial, validateServiceInput, type NewServiceInput } from './services'
+import { effectivePolicy, openOrderLive } from './commercial/catalog'
 
 export type FamilyRole = Exclude<ParticipantRole, 'beneficiary'>
 
@@ -48,6 +50,9 @@ export interface NewProjectInput {
   targetDate: string
   notes?: string
   services: NewServiceInput[]
+  /** Phase 4.6: province and open PO applied to the project. */
+  province?: string
+  openOrderId?: string
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -93,10 +98,47 @@ export function validateProjectInput(ds: Dataset, input: NewProjectInput): Recor
 
   if (input.services.length === 0) f.services = 'Agregá al menos un servicio.'
   const projectDates = isIsoDate(input.startDate) && isIsoDate(input.targetDate) ? { startDate: input.startDate, targetDate: input.targetDate } : undefined
+  const client = findById(ds.clients, input.clientId)
+  const policy = effectivePolicy(client)
+  const order = input.openOrderId ? findById(ds.openOrders, input.openOrderId) : undefined
+  if (policy.poMode === 'open') {
+    if (!input.province?.trim()) f.province = 'Elegí la provincia.'
+    if (!order) f.openOrderId = 'Elegí la OC abierta aplicable.'
+  }
+  if (order) {
+    if (order.clientId !== input.clientId) f.openOrderId = 'La OC es de otro cliente.'
+    else if (!openOrderLive(order, isIsoDate(input.startDate) ? input.startDate : order.validFrom)) f.openOrderId = 'La OC no está vigente para la fecha de inicio.'
+    else if (input.province?.trim() && order.province !== input.province.trim()) f.openOrderId = 'La OC corresponde a otra provincia.'
+  }
+  const draft = client && draftProject(input, client.billingCurrency, order?.currency)
   input.services.forEach((s, i) => {
     for (const [key, msg] of Object.entries(validateServiceInput(ds, s, projectDates))) f[`services.${i}.${key}`] = msg
+    if (draft && !f.openOrderId) for (const [key, msg] of Object.entries(validateServiceCommercial(ds, draft, s))) f[`services.${i}.${key}`] ??= msg
   })
   return f
+}
+
+/** Minimal project shape to price and validate services before the project exists. */
+export function draftProject(input: NewProjectInput, billingCurrency: CurrencyCode, orderCurrency?: CurrencyCode): ProjectRecord {
+  return {
+    id: '',
+    code: '',
+    clientId: input.clientId,
+    beneficiaryId: '',
+    category: 'long-term',
+    origin: { country: (input.origin.country || 'AR') as CountryCode, city: input.origin.city },
+    destination: { country: (input.destination.country || 'AR') as CountryCode, city: input.destination.city },
+    ownerId: input.ownerId,
+    operationalStatus: 'onboarding',
+    financialStatus: 'to-quote',
+    currency: orderCurrency ?? billingCurrency,
+    startDate: input.startDate,
+    targetDate: input.targetDate,
+    province: input.province?.trim() || undefined,
+    openOrderId: input.openOrderId || undefined,
+    createdAt: '',
+    updatedAt: '',
+  }
 }
 
 /** Next code in the global sequence for the current year: REL-2026-0163. */
@@ -169,10 +211,12 @@ export function createProject(
     ownerId: input.ownerId,
     operationalStatus: 'onboarding',
     financialStatus: 'to-quote',
-    currency: client.billingCurrency,
+    currency: (input.openOrderId && findById(ds.openOrders, input.openOrderId)?.currency) || client.billingCurrency,
     startDate: input.startDate,
     targetDate: input.targetDate,
     notes: input.notes?.trim() || undefined,
+    province: input.province?.trim() || undefined,
+    openOrderId: input.openOrderId || undefined,
     createdAt: now,
     updatedAt: now,
   }

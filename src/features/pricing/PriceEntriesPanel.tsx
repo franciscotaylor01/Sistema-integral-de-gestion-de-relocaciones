@@ -18,6 +18,9 @@ import { priceUnitLabel } from '@/config/commercial'
 import { countryOptions } from '@/config/countries'
 import { getServiceType, serviceCatalog } from '@/config/serviceCatalog'
 import { findOverlaps, resolvePrice } from '@/domain/commercial/pricing'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useToast } from '@/components/feedback/useToast'
+import { useActions } from '@/hooks/useActions'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { formatDate } from '@/lib/dates'
 import { formatCurrency } from '@/lib/format'
@@ -33,6 +36,9 @@ export function PriceEntriesPanel({ workspace: ws, client }: { workspace: Worksp
   const [market, setMarket] = useState('')
   const [state, setState] = useState('')
   const [editing, setEditing] = useState<PriceEntry | 'new'>()
+  const [approving, setApproving] = useState<PriceEntry>()
+  const actions = useActions()
+  const { notify } = useToast()
 
   const entries = useMemo(() => ws.priceEntries.filter((e) => e.clientId === client.id), [ws.priceEntries, client.id])
   const overlapIds = useMemo(() => new Set(entries.filter((e) => findOverlaps(ws.dataset, e).length > 0).map((e) => e.id)), [entries, ws.dataset])
@@ -117,7 +123,7 @@ export function PriceEntriesPanel({ workspace: ws, client }: { workspace: Worksp
           caption={`Tarifas de ${client.name}`}
           rows={rows}
           getRowId={(e) => e.id}
-          minWidth={980}
+          minWidth={1140}
           dense
           columns={[
             {
@@ -125,9 +131,12 @@ export function PriceEntriesPanel({ workspace: ws, client }: { workspace: Worksp
               header: 'Servicio',
               width: '22%',
               cell: (e) => (
-                <button type="button" onClick={() => setEditing(e)} className="flex min-w-0 items-center gap-[10px] text-left hover:underline">
+                <button type="button" disabled={Boolean(e.supersededById)} onClick={() => setEditing(e)} className="flex min-w-0 items-center gap-[10px] text-left enabled:hover:underline">
                   <ServiceChip type={e.serviceTypeId} />
-                  <span className="truncate font-medium">{getServiceType(e.serviceTypeId).label}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{getServiceType(e.serviceTypeId).label}</span>
+                    <span className="block truncate text-[12px] text-muted">{e.itemId ? (ws.catalogItems.find((i) => i.id === e.itemId)?.name ?? 'Subservicio') : 'Servicio completo'}</span>
+                  </span>
                 </button>
               ),
             },
@@ -170,13 +179,33 @@ export function PriceEntriesPanel({ workspace: ws, client }: { workspace: Worksp
                 </span>
               ),
             },
-            { id: 'agreement', header: 'Acuerdo', width: '17%', cell: (e) => <span className="block truncate text-ink-secondary">{e.agreement ?? '—'}</span> },
+            { id: 'agreement', header: 'Acuerdo', width: '13%', cell: (e) => <span className="block truncate text-ink-secondary">{e.agreement ?? '—'}</span> },
+            {
+              id: 'approval',
+              header: 'Aprobación',
+              width: '14%',
+              cell: (e) =>
+                e.approvedAt ? (
+                  <span className="block min-w-0" title={e.approvalRef}>
+                    <StatusBadge meta={{ label: 'Aprobada', tone: 'success' }} />
+                    <span className="block truncate text-[12px] text-muted">{e.approvalRef}</span>
+                  </span>
+                ) : e.supersededById ? (
+                  <span className="text-muted">—</span>
+                ) : (
+                  <button type="button" onClick={() => setApproving(e)} className="rounded-full px-[10px] py-[4px] text-[13px] font-medium text-ink-secondary hover:bg-surface-muted hover:text-ink">
+                    Aprobar
+                  </button>
+                ),
+            },
             {
               id: 'status',
               header: 'Estado',
               width: '12%',
               cell: (e) =>
-                overlapIds.has(e.id) ? (
+                e.supersededById ? (
+                  <StatusBadge meta={{ label: 'Versión anterior', tone: 'neutral' }} />
+                ) : overlapIds.has(e.id) ? (
                   <StatusBadge meta={{ label: 'Superpuesta', tone: 'warning' }} />
                 ) : e.active && (!e.validTo || e.validTo >= DEMO_TODAY) ? (
                   <StatusBadge meta={{ label: 'Activa', tone: 'success' }} />
@@ -195,6 +224,18 @@ export function PriceEntriesPanel({ workspace: ws, client }: { workspace: Worksp
         />
       </Card>
       <PriceTester workspace={ws} client={client} />
+      <ConfirmDialog
+        open={Boolean(approving)}
+        onClose={() => setApproving(undefined)}
+        title="Registrar aprobación comercial"
+        confirmLabel="Aprobar tarifa"
+        reasonLabel="Referencia de la aprobación (acta, email, contrato)"
+        message="Una tarifa aprobada no se edita: cualquier cambio crea una nueva versión y se conserva el historial."
+        onConfirm={async (ref) => {
+          await actions.approvePriceEntry(approving!.id, ref)
+          notify({ title: 'Tarifa aprobada' })
+        }}
+      />
       <PriceEntryModal open={Boolean(editing)} onClose={() => setEditing(undefined)} workspace={ws} client={client} entry={editing === 'new' ? undefined : editing} />
     </div>
   )

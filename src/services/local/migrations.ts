@@ -1,3 +1,4 @@
+import { withCatalogSeed } from '@/data/catalogSeed'
 import { buildCommercialSeed, buildFinanceSeed, buildSettlementSeed, withCommercial } from '@/data/seed'
 import type { LegacyInvoice, LegacyPayable, LegacyPayment, LegacySupplier } from '@/data/mock/seedTypes'
 import { priceListsToEntries } from '@/domain/commercial/legacy'
@@ -56,10 +57,16 @@ function v4ToV5(data: Omit<Dataset, 'settlements'> & { settlements?: Dataset['se
   return { ...data, schemaVersion: 5, settlements: data.settlements ?? buildSettlementSeed(data.projects, data.obligations ?? []) }
 }
 
+/** v5 → v6: hierarchical catalog, open POs and certificates (demo), keeping every existing record. */
+function v5ToV6(data: Omit<Dataset, 'catalogItems' | 'openOrders' | 'certificates'>): Dataset {
+  return withCatalogSeed({ ...data, schemaVersion: 6, catalogItems: [], openOrders: [], certificates: [] })
+}
+
 const steps: Record<number, (data: never) => unknown> = {
   2: v2ToV3 as (data: never) => unknown,
   3: v3ToV4 as (data: never) => unknown,
   4: v4ToV5 as (data: never) => unknown,
+  5: v5ToV6 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

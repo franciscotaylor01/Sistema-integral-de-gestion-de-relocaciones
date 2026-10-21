@@ -29,6 +29,7 @@ export const ROUTES = {
 export const projectPath = (id: string) => `${ROUTES.projects}/${id}`
 export const clientPath = (id: string) => `${ROUTES.clients}/${id}`
 export const invoicePath = (id: string) => `/facturas/${id}`
+export const certificatePath = (id: string) => `/certificados/${id}`
 export const settlementPath = (id: string) => `/liquidaciones/${id}`
 export const supplierPath = (id: string) => `${ROUTES.suppliers}/${id}`
 export const quotationPath = (id: string) => `/cotizaciones/${id}`

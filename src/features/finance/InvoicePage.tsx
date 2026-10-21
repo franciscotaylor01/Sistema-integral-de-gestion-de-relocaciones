@@ -18,7 +18,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Timeline } from '@/components/ui/Timeline'
 import { invoiceStatusMeta } from '@/config/catalogs'
 import { collectionActionLabel, FISCAL_DISCLAIMER, invoiceKindLabel, paymentMethodLabel } from '@/config/finance'
-import { clientPath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
+import { certificatePath, clientPath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { lineSubtotal } from '@/domain/finance/derive'
 import type { InvoiceInput } from '@/domain/finance/invoices'
@@ -183,6 +183,15 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
                                     </Link>
                                   </>
                                 )}
+                                {l.certificateId && (
+                                  <>
+                                    {' · '}
+                                    <Link to={certificatePath(l.certificateId)} className="hover:underline">
+                                      Cert. {ws.certificates.find((c) => c.id === l.certificateId)?.externalNumber ?? ws.certificates.find((c) => c.id === l.certificateId)?.number}
+                                    </Link>
+                                  </>
+                                )}
+                                {l.openOrderId && ` · OC abierta ${ws.openOrders.find((o) => o.id === l.openOrderId)?.number ?? ''}`}
                                 {po && (
                                   <>
                                     {' · '}

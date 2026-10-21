@@ -44,6 +44,7 @@ function PriceEntryForm({ onClose, workspace: ws, client, entry }: PriceEntryMod
   const [input, setInput] = useState<PriceEntryInput>(() => ({
     clientId: client.id,
     serviceTypeId: entry?.serviceTypeId ?? '',
+    itemId: entry?.itemId ?? '',
     market: entry?.market ?? 'ANY',
     currency: entry?.currency ?? client.billingCurrency,
     unitPrice: entry?.unitPrice ?? 0,
@@ -75,6 +76,11 @@ function PriceEntryForm({ onClose, workspace: ws, client, entry }: PriceEntryMod
       }}
       className="flex flex-col gap-[14px]"
     >
+      {entry?.approvedAt && (
+        <p role="note" className="rounded-[14px] bg-info-soft px-[14px] py-[10px] text-[13px] text-info">
+          Tarifa aprobada ({entry.approvalRef}). Al guardar cambios se crea una nueva versión pendiente de aprobación; la anterior se conserva en el historial y los proyectos ya contratados mantienen su precio.
+        </p>
+      )}
       {errors.overlap ? (
         <div role="alert" className="rounded-[14px] bg-warning-soft px-[14px] py-[12px] text-[13.5px] text-warning">
           <p className="flex items-center gap-[8px] font-semibold">
@@ -102,7 +108,7 @@ function PriceEntryForm({ onClose, workspace: ws, client, entry }: PriceEntryMod
       <div className="grid gap-[14px] sm:grid-cols-2">
         <Field label="Servicio" required error={errors.serviceTypeId}>
           {(p) => (
-            <SelectInput {...p} data-autofocus value={input.serviceTypeId} onChange={(e) => patch({ serviceTypeId: e.target.value })}>
+            <SelectInput {...p} data-autofocus value={input.serviceTypeId} onChange={(e) => patch({ serviceTypeId: e.target.value, itemId: '' })}>
               <option value="">Elegí un servicio</option>
               {activeServiceTypes().map((t) => (
                 <option key={t.id} value={t.id}>
@@ -110,6 +116,23 @@ function PriceEntryForm({ onClose, workspace: ws, client, entry }: PriceEntryMod
                 </option>
               ))}
               {input.serviceTypeId && !getServiceType(input.serviceTypeId).active && <option value={input.serviceTypeId}>{getServiceType(input.serviceTypeId).label}</option>}
+            </SelectInput>
+          )}
+        </Field>
+        <Field label="Subservicio" error={errors.itemId} hint="Vacío = precio del servicio completo (una sola línea).">
+          {(p) => (
+            <SelectInput {...p} value={input.itemId ?? ''} onChange={(e) => {
+              const it = ws.catalogItems.find((x) => x.id === e.target.value)
+              patch({ itemId: e.target.value, unit: it?.unit ?? input.unit })
+            }}>
+              <option value="">Servicio completo</option>
+              {ws.catalogItems
+                .filter((it) => it.serviceTypeId === input.serviceTypeId && (it.active || it.id === input.itemId))
+                .map((it) => (
+                  <option key={it.id} value={it.id}>
+                    {it.name}
+                  </option>
+                ))}
             </SelectInput>
           )}
         </Field>

@@ -46,12 +46,16 @@ import { ObligationDetailModal, SupplierPaymentDetailModal, SupplierPaymentModal
 import { ReceiptDetailModal, RecordReceiptModal } from './modals/ReceiptModals'
 import { CostModal, ObligationModal, SupplierFormModal } from './modals/SupplierModals'
 import { SettlementsView } from './settlements/SettlementsView'
+import { OpenOrdersPanel } from '@/features/catalog/CatalogPanels'
+import { certificateColumns } from '@/features/catalog/certificateColumns'
+import { certificateStatusMeta } from '@/features/catalog/meta'
+import type { CertificateStatus } from '@/types/domain'
 import { obligationOutstanding, outstandingOf, receivablesAging, summarizeLedger, supplierBalances } from './selectors'
 
-const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'pendientes'] as const
+const VIEWS = ['resumen', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'liquidaciones', 'comercial', 'cotizaciones', 'ordenes', 'oc-abiertas', 'certificados', 'pendientes'] as const
 type View = (typeof VIEWS)[number]
 const isView = (v: string | null): v is View => VIEWS.includes(v as View)
-const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes']
+const COMMERCIAL_VIEWS: View[] = ['comercial', 'cotizaciones', 'ordenes', 'pendientes', 'oc-abiertas', 'certificados']
 const SEARCHABLE: View[] = ['liquidaciones', 'facturas', 'cobranzas', 'proveedores', 'pagos', 'costos', 'resultados', 'cotizaciones', 'ordenes', 'pendientes']
 
 export function FinancePage() {
@@ -140,6 +144,8 @@ export function FinancePage() {
                 { value: 'cotizaciones', label: 'Cotizaciones', count: workspace.quotations.length },
                 { value: 'ordenes', label: 'Órdenes de compra', count: workspace.purchaseOrders.filter((p) => p.status === 'active').length },
                 { value: 'pendientes', label: 'Pendiente de OC', count: pendingCount },
+                { value: 'oc-abiertas', label: 'OC abiertas', count: workspace.openOrders.length },
+                { value: 'certificados', label: 'Certificados', count: workspace.certificates.length },
               ]}
             />
           </motion.div>
@@ -173,6 +179,15 @@ export function FinancePage() {
                 value={status}
                 onChange={(v) => setParam('estado', v)}
                 options={(Object.keys(purchaseOrderStatusMeta) as PurchaseOrderStatus[]).map((s) => ({ value: s, label: purchaseOrderStatusMeta[s].label }))}
+              />
+            )}
+            {view === 'certificados' && (
+              <FilterSelect
+                size="sm"
+                label="Estado"
+                value={status}
+                onChange={(v) => setParam('estado', v)}
+                options={(Object.keys(certificateStatusMeta) as CertificateStatus[]).map((s) => ({ value: s, label: certificateStatusMeta[s].label }))}
               />
             )}
             {view === 'liquidaciones' && (
@@ -248,6 +263,8 @@ export function FinancePage() {
                 {view === 'comercial' && <CommercialOverview workspace={workspace} currency={currency} client={client} />}
                 {view === 'cotizaciones' && <QuotationsView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
                 {view === 'ordenes' && <PurchaseOrdersView workspace={workspace} currency={currency} client={client} status={status} q={q} />}
+                {view === 'oc-abiertas' && <OpenOrdersPanel workspace={workspace} client={client ? workspace.clientById.get(client) : undefined} />}
+                {view === 'certificados' && <CertificatesView workspace={workspace} client={client} status={status} q={q} />}
                 {view === 'pendientes' && <PendingAuthorizationView workspace={workspace} currency={currency} client={client} q={q} />}
               </motion.div>
             </TabPanel>
@@ -737,6 +754,18 @@ function ResultsView({ workspace: ws, currency, q = '' }: ViewProps) {
         ]}
         empty={<EmptyState title="Sin proyectos para los filtros elegidos" />}
       />
+    </Card>
+  )
+}
+
+function CertificatesView({ workspace: ws, client, status, q = '' }: { workspace: Workspace; client: string; status: string; q?: string }) {
+  const rows = ws.certificates
+    .filter((c) => (!client || c.clientId === client) && (!status || c.status === status) && matches(q, c.number, c.externalNumber, ws.projectById.get(c.projectId)?.code, ws.clientById.get(c.clientId)?.name))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return (
+    <Card aria-labelledby="fin-certs" className="px-[19px] pb-[19px] pt-[19px]">
+      <SectionTitle id="fin-certs" title="Certificados" description="Certificados registrados por proyecto: cliente → OC → proyecto → ítems → certificado → factura. Se generan en el portal del cliente; SIGR registra el flujo." />
+      <DataTable className="mt-[18px]" caption="Certificados" rows={rows} getRowId={(c) => c.id} minWidth={1120} columns={certificateColumns(ws)} empty={<EmptyState title="Sin certificados para los filtros elegidos" />} />
     </Card>
   )
 }

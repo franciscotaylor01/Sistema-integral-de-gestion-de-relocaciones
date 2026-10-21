@@ -21,6 +21,7 @@ import { billingMilestoneLabel } from '@/config/commercial'
 import { projectPath, purchaseOrderPath, quotationPath, ROUTES } from '@/config/navigation'
 import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/columns'
 import { PriceEntriesPanel } from '@/features/pricing/PriceEntriesPanel'
+import { CatalogPanel, OfferedServicesCard, OpenOrdersPanel } from '@/features/catalog/CatalogPanels'
 import { ClientFormModal } from './components/ClientFormModal'
 import { invoiceColumns } from '@/features/finance/components/ledgerColumns'
 import { outstandingOf, summarizeLedger } from '@/features/finance/selectors'
@@ -34,7 +35,7 @@ import { formatCurrency } from '@/lib/format'
 import { currencyEntries } from '@/lib/money'
 import { cardVariants, staggerVariants } from '@/lib/motion'
 
-const TABS = ['empresa', 'contactos', 'proyectos', 'tarifario', 'comercial', 'facturas', 'saldos'] as const
+const TABS = ['empresa', 'contactos', 'proyectos', 'tarifario', 'oc-abiertas', 'comercial', 'facturas', 'saldos'] as const
 type ClientTab = (typeof TABS)[number]
 const isTab = (v: string | null): v is ClientTab => TABS.includes(v as ClientTab)
 
@@ -122,6 +123,7 @@ export function ClientDetailPage() {
             { value: 'contactos', label: 'Contactos', count: client.contacts.length },
             { value: 'proyectos', label: 'Proyectos', count: projects.length },
             { value: 'tarifario', label: 'Tarifario', count: workspace.priceEntries.filter((e) => e.clientId === client.id).length },
+            { value: 'oc-abiertas', label: 'OC abiertas', count: workspace.openOrders.filter((o) => o.clientId === client.id).length },
             { value: 'comercial', label: 'Cotizaciones y OC', count: workspace.quotations.filter((q) => q.clientId === client.id).length + workspace.purchaseOrders.filter((p) => p.clientId === client.id).length },
             { value: 'facturas', label: 'Facturas', count: invoices.length },
             { value: 'saldos', label: 'Saldos', count: openInvoices.length },
@@ -279,7 +281,14 @@ export function ClientDetailPage() {
               </Card>
             )}
 
-            {tab === 'tarifario' && <PriceEntriesPanel workspace={workspace} client={client} />}
+            {tab === 'tarifario' && (
+              <>
+                <OfferedServicesCard workspace={workspace} client={client} />
+                <PriceEntriesPanel workspace={workspace} client={client} />
+                <CatalogPanel workspace={workspace} client={client} />
+              </>
+            )}
+            {tab === 'oc-abiertas' && <OpenOrdersPanel workspace={workspace} client={client} />}
 
             {tab === 'comercial' && (
               <>

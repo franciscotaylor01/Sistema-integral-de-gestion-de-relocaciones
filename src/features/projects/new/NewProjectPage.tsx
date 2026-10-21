@@ -22,8 +22,10 @@ import { getServiceType } from '@/config/serviceCatalog'
 import { randomId } from '@/domain/context'
 import { addDays } from '@/domain/dates'
 import { DomainError } from '@/domain/errors'
-import { validateProjectInput, type FamilyRole, type NewProjectInput } from '@/domain/projects'
+import { draftProject, validateProjectInput, type FamilyRole, type NewProjectInput } from '@/domain/projects'
 import type { NewServiceInput } from '@/domain/services'
+import { effectivePolicy, openOrderLive } from '@/domain/commercial/catalog'
+import { ServiceItemsEditor } from '@/features/catalog/ServiceItemsEditor'
 import { useActions } from '@/hooks/useActions'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { useWorkspace, type Workspace } from '@/hooks/useWorkspace'
@@ -43,7 +45,7 @@ const STEPS: WizardStep[] = [
 
 /** Which step owns each validation field. */
 function stepOf(field: string): number {
-  if (field === 'clientId' || field.startsWith('beneficiary') || field.startsWith('family')) return 0
+  if (field === 'clientId' || field === 'province' || field === 'openOrderId' || field.startsWith('beneficiary') || field.startsWith('family')) return 0
   if (field.startsWith('services')) return 2
   return 1
 }
@@ -296,7 +298,7 @@ function PeopleStep({ ws, input, patch, errors }: StepProps) {
     <div className="flex flex-col gap-[18px]">
       <Field label="Cliente corporativo" required error={errors.clientId}>
         {(p) => (
-          <SelectInput {...p} data-autofocus value={input.clientId} onChange={(e) => patch({ clientId: e.target.value, beneficiaryPersonId: undefined })}>
+          <SelectInput {...p} data-autofocus value={input.clientId} onChange={(e) => patch({ clientId: e.target.value, beneficiaryPersonId: undefined, province: undefined, openOrderId: undefined })}>
             <option value="">Elegí un cliente</option>
             {ws.clients
               .filter((c) => c.status !== 'inactive')
@@ -308,6 +310,8 @@ function PeopleStep({ ws, input, patch, errors }: StepProps) {
           </SelectInput>
         )}
       </Field>
+
+      <OpenOrderFields ws={ws} input={input} patch={patch} errors={errors} />
 
       {known.length > 0 && (
         <Field label="¿Es una persona con la que ya trabajamos?" hint="Elegila para no duplicar su registro; si no, cargá sus datos abajo.">
@@ -439,9 +443,54 @@ function MoveStep({ ws, input, patch, errors }: StepProps) {
   )
 }
 
+/** Province and open PO, shown when the client works with open purchase orders. */
+function OpenOrderFields({ ws, input, patch, errors }: StepProps) {
+  const client = ws.clientById.get(input.clientId)
+  if (!client || effectivePolicy(client).poMode !== 'open') return null
+  const orders = ws.openOrders.filter((o) => o.clientId === client.id && openOrderLive(o, input.startDate || DEMO_TODAY))
+  const provinces = [...new Set(orders.map((o) => o.province))]
+  const forProvince = orders.filter((o) => o.province === input.province)
+  return (
+    <div className="grid gap-[12px] sm:grid-cols-2">
+      <Field label="Provincia" required error={errors.province} hint="El cliente trabaja con OC abiertas por provincia.">
+        {(p) => (
+          <SelectInput
+            {...p}
+            value={input.province ?? ''}
+            onChange={(e) => {
+              const only = orders.filter((o) => o.province === e.target.value)
+              patch({ province: e.target.value || undefined, openOrderId: only.length === 1 ? only[0].id : undefined })
+            }}
+          >
+            <option value="">Elegí la provincia</option>
+            {provinces.map((pr) => (
+              <option key={pr} value={pr}>
+                {pr}
+              </option>
+            ))}
+          </SelectInput>
+        )}
+      </Field>
+      <Field label="OC abierta aplicable" required error={errors.openOrderId}>
+        {(p) => (
+          <SelectInput {...p} value={input.openOrderId ?? ''} disabled={!input.province} onChange={(e) => patch({ openOrderId: e.target.value || undefined })}>
+            <option value="">Elegí la OC</option>
+            {forProvince.map((o) => (
+              <option key={o.id} value={o.id}>
+                OC {o.number} · {o.items.length} ítems
+              </option>
+            ))}
+          </SelectInput>
+        )}
+      </Field>
+    </div>
+  )
+}
+
 function ServicesStep({ ws, input, patch, errors }: StepProps) {
   const selected = input.services.map((s) => s.typeId)
   const client = ws.clientById.get(input.clientId)
+  const draft = client ? draftProject(input, client.billingCurrency, ws.openOrders.find((o) => o.id === input.openOrderId)?.currency) : undefined
   const setService = (i: number, p: Partial<NewServiceInput>) => patch({ services: input.services.map((s, j) => (j === i ? { ...s, ...p } : s)) })
   const toggle = (typeId: string) =>
     patch({
@@ -453,7 +502,7 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
   return (
     <div className="flex flex-col gap-[18px]">
       <div>
-        <ServiceTypeGrid multiple label="Servicios contratados" selected={selected} onToggle={toggle} />
+        <ServiceTypeGrid multiple label="Servicios contratados" selected={selected} onToggle={toggle} only={client?.offeredServices} />
         {errors.services && <p className="mt-[8px] text-[12.5px] font-medium text-danger">{errors.services}</p>}
       </div>
       {input.services.map((s, i) => {
@@ -506,10 +555,28 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
                 {(p) => <DateInput {...p} value={s.dueDate} max={input.targetDate} onChange={(ev) => setService(i, { dueDate: ev.target.value })} />}
               </Field>
             </div>
+            {draft && (
+              <div className="mt-[12px]">
+                <p className="mb-[6px] text-[13px] font-medium text-ink-secondary">Subservicios contratados</p>
+                <ServiceItemsEditor
+                  ws={ws}
+                  project={draft}
+                  typeId={s.typeId}
+                  items={s.items ?? []}
+                  onChange={(items) => setService(i, { items })}
+                  errors={Object.fromEntries(Object.entries(errors).filter(([k]) => k.startsWith(`services.${i}.items`)).map(([k, v]) => [k.slice(`services.${i}.`.length), v]))}
+                  date={s.startDate || DEMO_TODAY}
+                />
+                {e('items') && <p className="mt-[6px] text-[12.5px] font-medium text-danger">{e('items')}</p>}
+                {e('typeId') && <p className="mt-[6px] text-[12.5px] font-medium text-danger">{e('typeId')}</p>}
+              </div>
+            )}
             <div className="mt-[12px] grid gap-[10px] sm:grid-cols-2">
               <Switch checked={Boolean(s.startNow)} onChange={(v) => setService(i, { startNow: v })} label="Iniciar ahora" description="Activa la primera etapa y crea sus tareas." />
               <p className="flex items-center rounded-[14px] bg-surface px-[14px] py-[11px] text-[13px] text-ink-secondary">
-                {ref && client && ref.price !== undefined ? (
+                {s.items?.length ? (
+                  'El precio del servicio es el total de sus subservicios.'
+                ) : ref && client && ref.price !== undefined ? (
                   <span>
                     Tarifario: <span className="tabular font-semibold">{formatCurrency(ref.price, client.billingCurrency)}</span>
                   </span>
@@ -586,7 +653,9 @@ function ReviewStep({ ws, input, onEdit }: { ws: Workspace; input: NewProjectInp
         2,
         input.services.map((s) => [
           getServiceType(s.typeId).label,
-          `${ws.staffById.get(s.ownerId)?.name ?? '—'} · ${formatDate(s.startDate)} – ${formatDate(s.dueDate)}${s.startNow ? ' · inicia ahora' : ''}`,
+          `${ws.staffById.get(s.ownerId)?.name ?? '—'} · ${formatDate(s.startDate)} – ${formatDate(s.dueDate)}${s.startNow ? ' · inicia ahora' : ''}${
+            s.items?.length ? ` · ${s.items.map((it) => `${ws.catalogItems.find((c) => c.id === it.catalogItemId)?.name} ×${it.quantity}`).join(', ')}` : ''
+          }`,
         ]),
       )}
     </div>

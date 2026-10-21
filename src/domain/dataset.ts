@@ -5,6 +5,9 @@ import type {
   CustomerReceipt,
   ExchangeRate,
   ProjectSettlement,
+  CatalogItem,
+  OpenPurchaseOrder,
+  Certificate,
   LegalEntity,
   SupplierAgreement,
   SupplierObligation,
@@ -29,7 +32,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -58,6 +61,10 @@ export interface Dataset {
   audit: AuditEvent[]
   /** Phase 4.5 — Eugenia–Florencia settlements. */
   settlements: ProjectSettlement[]
+  /** Phase 4.6 — hierarchical catalog, open POs and certificates. */
+  catalogItems: CatalogItem[]
+  openOrders: OpenPurchaseOrder[]
+  certificates: Certificate[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

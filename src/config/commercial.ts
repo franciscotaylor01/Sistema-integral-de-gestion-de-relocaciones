@@ -45,4 +45,5 @@ export const commercialStageMeta: Record<CommercialStage, StatusMeta> = {
   'partially-authorized': { label: 'OC parcial', tone: 'warning' },
   authorized: { label: 'Autorizado por OC', tone: 'success' },
   'approved-no-po': { label: 'Aprobado (no requiere OC)', tone: 'success' },
+  'open-order': { label: 'Autorizado por OC abierta', tone: 'success' },
 }

@@ -29,6 +29,8 @@ import type { ProjectService } from '@/types/domain'
 import type { ProjectContext } from '../projectContext'
 import { projectBudget, projectEstimatedCost } from '../selectors'
 import { CommercialSection } from './CommercialSection'
+import { CertificatesSection } from '@/features/catalog/Certificates'
+import { effectivePolicy } from '@/domain/commercial/catalog'
 
 type Dialog = 'invoice' | 'receipt' | 'cost' | 'obligation' | 'payment' | 'settlement'
 
@@ -59,6 +61,7 @@ export function FinanceTab({ ctx }: { ctx: ProjectContext }) {
   return (
     <div className="flex flex-col gap-[24px]">
       <CommercialSection ctx={ctx} />
+      <CertificatesSection ws={ws} project={project} required={effectivePolicy(ctx.client, project).requiresCertificate} />
 
       <Card aria-labelledby="pf-results" className="px-[18px] pb-[18px] pt-[19px]">
         <SectionTitle id="pf-results" title="Resultado del proyecto" description="Acordado, facturado, cobrado, costos y pagos. Cada moneda por separado, sin conversión." className="px-[2px]" />
