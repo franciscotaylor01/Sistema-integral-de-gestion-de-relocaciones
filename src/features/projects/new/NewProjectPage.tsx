@@ -20,11 +20,15 @@ import { countryOptions } from '@/config/countries'
 import { projectPath, ROUTES } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { randomId } from '@/domain/context'
+import { suggestTemplates } from '@/domain/initialDocuments'
 import { addDays } from '@/domain/dates'
 import { DomainError } from '@/domain/errors'
+import { AR_PROVINCES } from '@/config/provinces'
+import type { CurrencyCode } from '@/types/domain'
 import { draftProject, validateProjectInput, type FamilyRole, type NewProjectInput } from '@/domain/projects'
 import type { NewServiceInput } from '@/domain/services'
-import { effectivePolicy, openOrderLive } from '@/domain/commercial/catalog'
+import { effectivePolicy, openOrderLive, resolveItemPrice } from '@/domain/commercial/catalog'
+import { addMoney, mulMoney } from '@/domain/finance/money'
 import { ServiceItemsEditor } from '@/features/catalog/ServiceItemsEditor'
 import { useActions } from '@/hooks/useActions'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
@@ -45,7 +49,7 @@ const STEPS: WizardStep[] = [
 
 /** Which step owns each validation field. */
 function stepOf(field: string): number {
-  if (field === 'clientId' || field === 'province' || field === 'openOrderId' || field.startsWith('beneficiary') || field.startsWith('family')) return 0
+  if (field === 'clientId' || field === 'province' || field === 'openOrderId' || field === 'currency' || field.startsWith('beneficiary') || field.startsWith('family')) return 0
   if (field.startsWith('services')) return 2
   return 1
 }
@@ -103,6 +107,8 @@ function Wizard({ workspace: ws, defaultOwner }: { workspace: Workspace; default
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string>()
   const [confirmCancel, setConfirmCancel] = useState(false)
+  /** Phase 5.0B: suggested templates the user unticked at review. */
+  const [skippedTemplates, setSkippedTemplates] = useState<Set<string>>(() => new Set())
   /** Idempotency key: retries of this wizard never create a second project. */
   const [requestId] = useState(() => randomId('req'))
   const submitted = useRef(false)
@@ -154,7 +160,8 @@ function Wizard({ workspace: ws, defaultOwner }: { workspace: Workspace; default
     setSubmitting(true)
     setFormError(undefined)
     try {
-      const result = await actions.createProject(input, requestId)
+      const initialTemplateIds = suggestTemplates(ws.dataset, input.services.map((sv) => sv.typeId)).map((x) => x.template.id).filter((id) => !skippedTemplates.has(id))
+      const result = await actions.createProject({ ...input, initialTemplateIds }, requestId)
       submitted.current = true
       const code = result.dataset.projects.find((p) => p.id === result.projectId)?.code
       notify({
@@ -192,7 +199,15 @@ function Wizard({ workspace: ws, defaultOwner }: { workspace: Workspace; default
               {step === 0 && <PeopleStep ws={ws} input={input} patch={patch} errors={errors} />}
               {step === 1 && <MoveStep ws={ws} input={input} patch={patch} errors={errors} />}
               {step === 2 && <ServicesStep ws={ws} input={input} patch={patch} errors={errors} />}
-              {step === 3 && <ReviewStep ws={ws} input={input} onEdit={goTo} />}
+              {step === 3 && (
+                <ReviewStep
+                  ws={ws}
+                  input={input}
+                  onEdit={goTo}
+                  skipped={skippedTemplates}
+                  onToggleTemplate={(id) => setSkippedTemplates((prev) => (prev.has(id) ? new Set([...prev].filter((x) => x !== id)) : new Set(prev).add(id)))}
+                />
+              )}
             </motion.div>
           </div>
           <div className="mt-[22px] flex flex-wrap items-center justify-between gap-[10px] border-t border-line pt-[16px]">
@@ -225,6 +240,9 @@ function Wizard({ workspace: ws, defaultOwner }: { workspace: Workspace; default
           <dl className="mt-[12px] flex flex-col text-[14px]">
             {[
               ['Cliente', client?.name],
+              ['Provincia', input.province ?? 'Sin especificar'],
+              ['OC abierta', input.openOrderId ? `OC ${ws.openOrders.find((o) => o.id === input.openOrderId)?.number}` : 'No aplica'],
+              ['Moneda del proyecto', ws.openOrders.find((o) => o.id === input.openOrderId)?.currency ?? input.currency ?? client?.billingCurrency],
               ['Beneficiario', input.beneficiaryPersonId ? ws.personById.get(input.beneficiaryPersonId)?.name : input.beneficiary.name],
               ['Familia', input.family.length ? `${input.family.length} ${input.family.length === 1 ? 'persona' : 'personas'}` : undefined],
               [
@@ -232,7 +250,6 @@ function Wizard({ workspace: ws, defaultOwner }: { workspace: Workspace; default
                 input.origin.city && input.destination.city ? `${input.origin.city} → ${input.destination.city}` : undefined,
               ],
               ['Fechas', input.startDate && input.targetDate ? `${formatDate(input.startDate)} – ${formatDate(input.targetDate)}` : undefined],
-              ['Moneda', client?.billingCurrency],
             ].map(([label, value]) => (
               <div key={label} className="flex items-center justify-between gap-4 border-b border-line py-[9px] last:border-b-0">
                 <dt className="text-muted">{label}</dt>
@@ -298,7 +315,7 @@ function PeopleStep({ ws, input, patch, errors }: StepProps) {
     <div className="flex flex-col gap-[18px]">
       <Field label="Cliente corporativo" required error={errors.clientId}>
         {(p) => (
-          <SelectInput {...p} data-autofocus value={input.clientId} onChange={(e) => patch({ clientId: e.target.value, beneficiaryPersonId: undefined, province: undefined, openOrderId: undefined })}>
+          <SelectInput {...p} data-autofocus value={input.clientId} onChange={(e) => patch({ clientId: e.target.value, beneficiaryPersonId: undefined, openOrderId: undefined, currency: undefined })}>
             <option value="">Elegí un cliente</option>
             {ws.clients
               .filter((c) => c.status !== 'inactive')
@@ -443,46 +460,71 @@ function MoveStep({ ws, input, patch, errors }: StepProps) {
   )
 }
 
-/** Province and open PO, shown when the client works with open purchase orders. */
+/**
+ * Province (always available: Argentine jurisdictions), open PO (only for
+ * clients working with open POs: compatible province and in force) and project
+ * currency (an open PO imposes its own). Clients with per-project PO or no PO are
+ * never blocked by the province.
+ */
 function OpenOrderFields({ ws, input, patch, errors }: StepProps) {
   const client = ws.clientById.get(input.clientId)
-  if (!client || effectivePolicy(client).poMode !== 'open') return null
-  const orders = ws.openOrders.filter((o) => o.clientId === client.id && openOrderLive(o, input.startDate || DEMO_TODAY))
-  const provinces = [...new Set(orders.map((o) => o.province))]
-  const forProvince = orders.filter((o) => o.province === input.province)
+  if (!client) return null
+  const open = effectivePolicy(client).poMode === 'open'
+  const live = ws.openOrders.filter((o) => o.clientId === client.id && openOrderLive(o, input.startDate || DEMO_TODAY))
+  const forProvince = live.filter((o) => o.province === input.province)
+  const order = ws.openOrders.find((o) => o.id === input.openOrderId)
   return (
     <div className="grid gap-[12px] sm:grid-cols-2">
-      <Field label="Provincia" required error={errors.province} hint="El cliente trabaja con OC abiertas por provincia.">
+      <Field label="Provincia" required={open} error={errors.province} hint={open ? `OC abiertas vigentes en: ${[...new Set(live.map((o) => o.province))].join(', ') || 'ninguna'}.` : 'Opcional para este cliente.'}>
         {(p) => (
           <SelectInput
             {...p}
             value={input.province ?? ''}
             onChange={(e) => {
-              const only = orders.filter((o) => o.province === e.target.value)
-              patch({ province: e.target.value || undefined, openOrderId: only.length === 1 ? only[0].id : undefined })
+              const province = e.target.value || undefined
+              const only = live.filter((o) => o.province === province)
+              patch({ province, openOrderId: open && only.length === 1 ? only[0].id : undefined })
             }}
           >
-            <option value="">Elegí la provincia</option>
-            {provinces.map((pr) => (
+            <option value="">{open ? 'Elegí la provincia' : 'Sin especificar'}</option>
+            {AR_PROVINCES.map((pr) => (
               <option key={pr} value={pr}>
                 {pr}
+                {open && live.some((o) => o.province === pr) ? ' · OC abierta' : ''}
               </option>
             ))}
           </SelectInput>
         )}
       </Field>
-      <Field label="OC abierta aplicable" required error={errors.openOrderId}>
-        {(p) => (
-          <SelectInput {...p} value={input.openOrderId ?? ''} disabled={!input.province} onChange={(e) => patch({ openOrderId: e.target.value || undefined })}>
-            <option value="">Elegí la OC</option>
-            {forProvince.map((o) => (
-              <option key={o.id} value={o.id}>
-                OC {o.number} · {o.items.length} ítems
-              </option>
-            ))}
-          </SelectInput>
-        )}
-      </Field>
+      {open ? (
+        <Field label="OC abierta aplicable" required error={errors.openOrderId} hint={input.province && !forProvince.length ? `No hay OC abierta vigente para ${input.province}.` : undefined}>
+          {(p) => (
+            <SelectInput {...p} value={input.openOrderId ?? ''} disabled={!forProvince.length} onChange={(e) => patch({ openOrderId: e.target.value || undefined })}>
+              <option value="">{input.province ? 'Elegí la OC' : 'Primero elegí la provincia'}</option>
+              {forProvince.map((o) => (
+                <option key={o.id} value={o.id}>
+                  OC {o.number} · {o.currency} · {o.items.length} ítems
+                </option>
+              ))}
+            </SelectInput>
+          )}
+        </Field>
+      ) : (
+        client.currencies.length > 1 && (
+          <Field label="Moneda del proyecto" error={errors.currency} hint="Los precios se buscan en esta moneda; no hay conversión.">
+            {(p) => (
+              <SelectInput {...p} value={input.currency ?? client.billingCurrency} onChange={(e) => patch({ currency: e.target.value as CurrencyCode })}>
+                {client.currencies.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </SelectInput>
+            )}
+          </Field>
+        )
+      )}
+      {open && order && <p className="text-[12.5px] text-muted sm:col-span-2">Moneda del proyecto: {order.currency} (de la OC). Los precios se toman de los ítems autorizados en la OC.</p>}
     </div>
   )
 }
@@ -490,7 +532,7 @@ function OpenOrderFields({ ws, input, patch, errors }: StepProps) {
 function ServicesStep({ ws, input, patch, errors }: StepProps) {
   const selected = input.services.map((s) => s.typeId)
   const client = ws.clientById.get(input.clientId)
-  const draft = client ? draftProject(input, client.billingCurrency, ws.openOrders.find((o) => o.id === input.openOrderId)?.currency) : undefined
+  const draft = client ? draftProject(input, input.currency ?? client.billingCurrency, ws.openOrders.find((o) => o.id === input.openOrderId)?.currency) : undefined
   const setService = (i: number, p: Partial<NewServiceInput>) => patch({ services: input.services.map((s, j) => (j === i ? { ...s, ...p } : s)) })
   const toggle = (typeId: string) =>
     patch({
@@ -499,6 +541,31 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
         : [...input.services, { typeId, ownerId: input.ownerId, startDate: input.startDate, dueDate: input.targetDate, startNow: true }],
     })
 
+  // Contracted total per currency (project currency only: nothing is converted).
+  const totals = new Map<string, number>()
+  let pending = 0
+  if (draft) {
+    for (const sv of input.services) {
+      if (sv.items?.length) {
+        for (const it of sv.items) {
+          const pr = resolveItemPrice(ws.dataset, draft, sv.typeId, it.catalogItemId, sv.startDate || DEMO_TODAY)?.unitPrice ?? it.unitPrice
+          if (pr && it.quantity > 0) totals.set(draft.currency, addMoney(totals.get(draft.currency) ?? 0, mulMoney(pr, it.quantity)))
+          else pending++
+        }
+      } else {
+        const pr = resolveItemPrice(ws.dataset, draft, sv.typeId, undefined, sv.startDate || DEMO_TODAY)?.unitPrice ?? referencePrice(ws, { clientId: draft.clientId, currency: draft.currency, destination: { country: draft.destination.country } }, sv.typeId, sv.startDate)?.price
+        if (pr) totals.set(draft.currency, addMoney(totals.get(draft.currency) ?? 0, pr))
+        else pending++
+      }
+    }
+  }
+  const totalsBar = input.services.length > 0 && (
+    <p className="rounded-[14px] bg-surface-muted px-[14px] py-[11px] text-[13.5px]">
+      Total contratado:{' '}
+      <span className="tabular font-semibold">{[...totals.entries()].map(([c, v]) => formatCurrency(v, c as CurrencyCode)).join(' · ') || '—'}</span>
+      {pending > 0 && <span className="text-warning"> · {pending} ítem(s) sin precio vigente (pendiente de configurar)</span>}
+    </p>
+  )
   return (
     <div className="flex flex-col gap-[18px]">
       <div>
@@ -508,7 +575,7 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
       {input.services.map((s, i) => {
         const ref =
           client && input.destination.country
-            ? referencePrice(ws, { clientId: client.id, currency: client.billingCurrency, destination: { country: input.destination.country } }, s.typeId, s.startDate)
+            ? referencePrice(ws, { clientId: client.id, currency: draft?.currency ?? client.billingCurrency, destination: { country: input.destination.country } }, s.typeId, s.startDate)
             : undefined
         const suppliers = ws.suppliers.filter((x) => x.categories.includes(s.typeId))
         const e = (k: string) => errors[`services.${i}.${k}`]
@@ -578,24 +645,26 @@ function ServicesStep({ ws, input, patch, errors }: StepProps) {
                   'El precio del servicio es el total de sus subservicios.'
                 ) : ref && client && ref.price !== undefined ? (
                   <span>
-                    Tarifario: <span className="tabular font-semibold">{formatCurrency(ref.price, client.billingCurrency)}</span>
+                    Tarifario: <span className="tabular font-semibold">{formatCurrency(ref.price, draft?.currency ?? client.billingCurrency)}</span>
                   </span>
                 ) : ref ? (
                   'Tarifas superpuestas: el precio se definirá al cotizar.'
                 ) : (
-                  'Sin precio de tarifario: quedará «a cotizar».'
+                  'Sin precio vigente en el tarifario: pendiente de configurar (quedará «a cotizar»).'
                 )}
               </p>
             </div>
           </section>
         )
       })}
+      {totalsBar}
     </div>
   )
 }
 
-function ReviewStep({ ws, input, onEdit }: { ws: Workspace; input: NewProjectInput; onEdit: (step: number) => void }) {
+function ReviewStep({ ws, input, onEdit, skipped, onToggleTemplate }: { ws: Workspace; input: NewProjectInput; onEdit: (step: number) => void; skipped: Set<string>; onToggleTemplate: (id: string) => void }) {
   const client = ws.clientById.get(input.clientId)
+  const templates = suggestTemplates(ws.dataset, input.services.map((s) => s.typeId))
   const person = input.beneficiaryPersonId ? ws.personById.get(input.beneficiaryPersonId) : undefined
   const block = (title: string, stepIndex: number, rows: [string, ReactNode][]) => (
     <section className="rounded-panel bg-surface-muted p-[14px]">
@@ -658,6 +727,30 @@ function ReviewStep({ ws, input, onEdit }: { ws: Workspace; input: NewProjectInp
           }`,
         ]),
       )}
+      <section className="rounded-panel bg-surface-muted p-[14px]" aria-label="Documentación inicial sugerida">
+        <h3 className="text-[14.5px] font-semibold">Documentación inicial sugerida</h3>
+        {templates.length === 0 ? (
+          <p className="mt-[6px] text-[13.5px] text-muted">No hay plantillas activas para los servicios elegidos.</p>
+        ) : (
+          <>
+            <p className="mt-[2px] text-[13px] text-muted">
+              Se agregan al proyecto como pendientes de enviar a {(person ?? input.beneficiary).name || 'el beneficiario'}
+              {(person?.email ?? input.beneficiary.email) ? ` (${person?.email ?? input.beneficiary.email})` : ' (sin email registrado)'}. No se envía nada automáticamente.
+            </p>
+            <ul className="mt-[8px] flex flex-col gap-[6px]">
+              {templates.map(({ template: t, serviceTypeIds }) => (
+                <li key={t.id}>
+                  <label className="flex flex-wrap items-center gap-[8px] text-[14px]">
+                    <input type="checkbox" className="size-[16px] accent-[var(--color-ink)]" checked={!skipped.has(t.id)} onChange={() => onToggleTemplate(t.id)} />
+                    <span className="font-medium">{t.name}</span>
+                    <span className="text-[13px] text-muted">{serviceTypeIds.map((id) => getServiceType(id).label).join(', ')}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
     </div>
   )
 }

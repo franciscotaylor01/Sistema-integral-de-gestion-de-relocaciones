@@ -8,6 +8,7 @@ import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
 import { round2, type Amounts } from './money'
 import { approvedAmountsByService, authorizedByService } from './quotations'
+import { agreedPrice } from './specialItems'
 
 export interface AllocationInput {
   serviceId: string
@@ -42,7 +43,10 @@ export function serviceCaps(ds: Dataset, projectId: string): Map<string, Amounts
   for (const s of ds.services.filter((x) => x.projectId === projectId)) {
     const a = approved.get(s.id)
     if (a && Object.keys(a).length) caps.set(s.id, a)
-    else if (client && !client.policy.requiresApprovedQuote && s.price && project) caps.set(s.id, { [project.currency]: s.price })
+    else if (client && !client.policy.requiresApprovedQuote && project) {
+      const price = agreedPrice(ds, project, s)
+      if (price) caps.set(s.id, { [project.currency]: price })
+    }
   }
   return caps
 }

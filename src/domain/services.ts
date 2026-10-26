@@ -8,7 +8,7 @@ import { DomainError, isIsoDate } from './errors'
 import { spawnStageTasks } from './tasks'
 import { instantiateStages } from './workflow'
 import { resolvePrice } from './commercial/pricing'
-import { buildServiceItems, effectivePolicy, isServiceOffered, itemsTotal, resolveItemPrice, validateServiceItems, type ServiceItemInput } from './commercial/catalog'
+import { buildServiceItems, effectivePolicy, isServiceOffered, itemsTotal, regularItems, resolveItemPrice, specialItemsOf, validateServiceItems, type ServiceItemInput } from './commercial/catalog'
 
 export interface NewServiceInput {
   typeId: string
@@ -136,6 +136,8 @@ export function updateService(ds: Dataset, serviceId: string, patch: ServicePatc
   // Existing services may predate the catalog's active flag; only the type is immutable here.
   delete fields.typeId
   if (patch.estimatedCost !== undefined && (!Number.isFinite(patch.estimatedCost) || patch.estimatedCost < 0)) fields.estimatedCost = 'Importe inválido.'
+  // Itemised prices come from the (frozen) sub-services: never overwritten silently.
+  if (service.items?.length && patch.price !== undefined && patch.price !== service.price) fields.price = 'El precio es el total de los subservicios: editalos para cambiarlo.'
   if (Object.keys(fields).length) throw new DomainError('Revisá los datos del servicio.', fields)
 
   const changes: string[] = []
@@ -180,16 +182,17 @@ export function updateServiceItems(ds: Dataset, serviceId: string, items: Servic
     for (const inv of ds.invoices) if (inv.lifecycle !== 'cancelled') for (const l of inv.lines) if (l.serviceItemId === itemId) q = Math.max(q, l.quantity)
     return Math.round(q * 1000) / 1000
   }
-  for (const prev of service.items ?? []) {
+  for (const prev of regularItems(service)) {
     const idx = items.findIndex((i) => i.catalogItemId === prev.catalogItemId)
     const min = used(prev.id)
     if (min > 0 && (idx < 0 || items[idx].quantity < min)) f[idx < 0 ? 'items' : `items.${idx}.quantity`] = `${prev.name} ya tiene ${min} certificado/facturado: no puede quedar por debajo.`
   }
   if (Object.keys(f).length) throw new DomainError('Revisá los subservicios.', f)
-  const built = items.length ? buildServiceItems(ds, project, service.typeId, items, date, ctx, service.items) : undefined
-  const next: Dataset = {
-    ...ds,
-    services: replaceById(ds.services, serviceId, (s) => ({ ...s, items: built, price: built ? itemsTotal(built) : s.items?.length ? undefined : s.price })),
-  }
+  const built = items.length ? buildServiceItems(ds, project, service.typeId, items, date, ctx, regularItems(service)) : undefined
+  // Phase 5.0B: special sub-services are managed separately and always kept.
+  const special = specialItemsOf(service)
+  const all = [...(built ?? []), ...special]
+  const price = built ? itemsTotal(all) : regularItems(service).length ? (special.length ? itemsTotal(special) : undefined) : service.price
+  const next: Dataset = { ...ds, services: replaceById(ds.services, serviceId, (s) => ({ ...s, items: all.length ? all : undefined, price })) }
   return logActivity(next, { projectId: project.id, serviceId, kind: 'commercial', message: `Subservicios de ${getServiceType(service.typeId).label} actualizados (${built?.length ?? 0}).` }, ctx)
 }

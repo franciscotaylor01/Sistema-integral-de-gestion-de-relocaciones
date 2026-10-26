@@ -183,8 +183,8 @@ function EditServiceForm({ service, onClose, project, ws }: { service: ProjectSe
         <Field label="Vencimiento" required error={errors.dueDate}>
           {(p) => <DateInput {...p} value={dueDate} onChange={(e) => setDueDate(e.target.value)} />}
         </Field>
-        <Field label={`Precio acordado (${project.currency})`} error={errors.price} hint="Referencia; sin cálculos en esta fase.">
-          {(p) => <TextInput {...p} type="number" min={0} step="any" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />}
+        <Field label={`Precio acordado (${project.currency})`} error={errors.price} hint={service.items?.length ? 'Total de los subservicios: se modifica desde ellos.' : 'Referencia; sin cálculos en esta fase.'}>
+          {(p) => <TextInput {...p} type="number" min={0} step="any" inputMode="decimal" disabled={Boolean(service.items?.length)} value={price} onChange={(e) => setPrice(e.target.value)} />}
         </Field>
         <Field label={`Costo estimado (${project.currency})`} error={errors.estimatedCost}>
           {(p) => <TextInput {...p} type="number" min={0} step="any" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} />}

@@ -21,6 +21,8 @@ import { billingMilestoneLabel } from '@/config/commercial'
 import { projectPath, purchaseOrderPath, quotationPath, ROUTES } from '@/config/navigation'
 import { purchaseOrderColumns, quotationColumns } from '@/features/commercial/columns'
 import { PriceEntriesPanel } from '@/features/pricing/PriceEntriesPanel'
+import { TariffGrid } from '@/features/pricing/TariffGrid'
+import { TariffSharing } from '@/features/pricing/TariffSharing'
 import { CatalogPanel, OfferedServicesCard, OpenOrdersPanel } from '@/features/catalog/CatalogPanels'
 import { ClientFormModal } from './components/ClientFormModal'
 import { invoiceColumns } from '@/features/finance/components/ledgerColumns'
@@ -283,7 +285,9 @@ export function ClientDetailPage() {
 
             {tab === 'tarifario' && (
               <>
-                <OfferedServicesCard workspace={workspace} client={client} />
+                <TariffGrid workspace={workspace} client={client} />
+                <TariffSharing workspace={workspace} client={client} />
+                <OfferedServicesCard key={(client.offeredServices ?? []).join()} workspace={workspace} client={client} />
                 <PriceEntriesPanel workspace={workspace} client={client} />
                 <CatalogPanel workspace={workspace} client={client} />
               </>

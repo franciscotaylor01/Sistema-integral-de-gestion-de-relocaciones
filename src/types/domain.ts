@@ -113,6 +113,8 @@ export interface CommercialPolicy {
   requiresCertificate?: boolean
   /** Phase 4.7: payment term counted in calendar or business days (default calendar). */
   paymentDayType?: PaymentDayType
+  /** Phase 5.0A: only commercially approved tariff prices apply (unapproved ones are ignored). */
+  requiresPriceApproval?: boolean
 }
 
 export type PoMode = 'open' | 'project' | 'none'
@@ -290,6 +292,9 @@ export interface ServiceRecord {
   /** Expected supplier cost (project currency). Reference only. */
   estimatedCost?: number
   financial?: FinancialRefs
+  /** Phase 5.0B: project-specific scope of this service (not the global catalog). */
+  description?: string
+  descriptionHistory?: ServiceDescriptionChange[]
 }
 
 /** A procedure inside a (migration-type) service, for one person. */
@@ -725,7 +730,7 @@ export interface AuditEvent {
   id: string
   date: string
   actorId: string
-  entity: 'invoice' | 'receipt' | 'cost' | 'obligation' | 'supplier-payment' | 'supplier' | 'exchange-rate' | 'agreement' | 'settlement'
+  entity: 'invoice' | 'receipt' | 'cost' | 'obligation' | 'supplier-payment' | 'supplier' | 'exchange-rate' | 'agreement' | 'settlement' | 'tariff-import' | 'document-template' | 'initial-document' | 'purchase-order'
   entityId: string
   action: string
   detail: string
@@ -744,7 +749,7 @@ export interface CurrencyIndicator {
 
 export type QuotationStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'expired'
 
-export type PriceSource = 'price-list' | 'adjusted' | 'manual'
+export type PriceSource = 'price-list' | 'adjusted' | 'manual' | 'special'
 
 /** Quotation line. Amounts are a frozen snapshot: tariff changes never alter them. */
 export interface QuotationLine {
@@ -764,6 +769,10 @@ export interface QuotationLine {
   suggestedUnitPrice?: number
   adjustmentReason?: string
   notes?: string
+  /** Phase 5.0B: project-specific scope (service description) — snapshot once issued. */
+  details?: string
+  /** Phase 5.0B: special sub-service priced by this line (its price/quantity are fixed by the item). */
+  serviceItemId?: string
 }
 
 export interface Quotation {
@@ -790,6 +799,68 @@ export interface Quotation {
   rejectionReason?: string
   /** Set when a later approved version replaces this one. */
   supersededById?: string
+  /** Phase 5.0B: content frozen and ready to send (still a draft until sent). */
+  preparedAt?: string
+  preparedBy?: string
+  /** Phase 5.0B: manual sending reference (email subject/id, courier, portal…). */
+  sentRef?: string
+  /** Phase 5.0B: client approval reference (email, signed copy, portal id). */
+  approvalRef?: string
+  /** Phase 5.0B: recipient data as issued (kept when the client record changes later). */
+  issuedTo?: QuotationParty
+}
+
+/** Phase 5.0B: who a quotation was addressed to, frozen when prepared/sent. */
+export interface QuotationParty {
+  clientName: string
+  legalName?: string
+  taxId?: string
+  billingAddress?: string
+  contact?: { name: string; role?: string; email?: string }
+  projectCode: string
+  beneficiary?: string
+  route?: string
+  accountManager?: { name: string; email?: string }
+}
+
+/**
+ * Phase 5.0B: commercial communication registered manually (SIGR does not
+ * send emails). Keeps the prepared subject/body and, for tariffs, a snapshot
+ * of the prices communicated.
+ */
+export interface CommercialCommunication {
+  id: string
+  kind: 'quotation' | 'tariff' | 'beneficiary-docs'
+  clientId: string
+  projectId?: string
+  quotationId?: string
+  subject: string
+  body: string
+  recipients?: string
+  /** Date it was sent, as declared by the user. */
+  sentAt: string
+  reference?: string
+  documentName?: string
+  tariffSnapshot?: TariffSnapshotRow[]
+  /** Phase 5.0B: initial documents requested in this sending. */
+  initialDocumentIds?: string[]
+  registeredAt: string
+  registeredBy: string
+}
+
+export interface TariffSnapshotRow {
+  priceEntryId: string
+  serviceTypeId: ServiceTypeId
+  itemId?: string
+  name: string
+  unit: PriceUnit
+  market: PriceMarket
+  currency: CurrencyCode
+  unitPrice: number
+  minQuantity: number
+  validFrom: string
+  validTo?: string
+  approvalRef?: string
 }
 
 export type PurchaseOrderStatus = 'active' | 'cancelled'
@@ -977,9 +1048,33 @@ export interface ServiceItem {
   unit: PriceUnit
   quantity: number
   unitPrice: number
-  /** Where the price came from (open PO item, tariff entry or manual). */
-  source: 'open-order' | 'tariff' | 'manual'
+  /** Currency of the frozen price (always the project currency; no conversion). */
+  currency?: CurrencyCode
+  /** Where the price came from (open PO item, tariff entry, manual or project-only special item). */
+  source: 'open-order' | 'tariff' | 'manual' | 'special'
   sourceRef?: string
+  /** Phase 5.0B: project-only sub-service (not in the catalog nor the client's tariff; catalogItemId is ''). */
+  special?: SpecialItemInfo
+}
+
+/** Phase 5.0B: data of a project-only special sub-service. */
+export interface SpecialItemInfo {
+  description?: string
+  /** Why it is needed (commercial justification). */
+  reason: string
+  /** Explicit commercial approval (client document / OC amendment). Absent = not explicitly approved. */
+  approvalRef?: string
+  approvedAt?: string
+  approvedBy?: string
+  createdAt: string
+  createdBy: string
+}
+
+/** Phase 5.0B: previous value of a service description (history). */
+export interface ServiceDescriptionChange {
+  previous?: string
+  at: string
+  by: string
 }
 
 export type OpenOrderStatus = 'active' | 'suspended' | 'expired' | 'cancelled'
@@ -1065,7 +1160,7 @@ export interface Withholding {
   createdAt: string
 }
 
-export type AttachmentEntity = 'invoice' | 'receipt' | 'withholding'
+export type AttachmentEntity = 'invoice' | 'receipt' | 'withholding' | 'tariff-import' | 'document-template' | 'initial-document' | 'purchase-order'
 
 /**
  * Document evidence. "indexeddb": the file is stored in this browser only;
@@ -1173,4 +1268,176 @@ export interface BatchPaymentAllocation {
   /** Equivalent in the project currency, using the line conversion. */
   originalAmount: number
   originalCurrency: CurrencyCode
+}
+
+/* ───────────── Phase 5.0A — tariff imports ───────────── */
+
+/** History of an Excel tariff import. The file itself is only kept if stored locally (attachment). */
+export interface TariffImport {
+  id: string
+  clientId: string
+  fileName: string
+  fileSize: number
+  /** SHA-256 of the file, to warn about re-imports. */
+  fileHash?: string
+  /** Local copy of the file (IndexedDB attachment), when it could be stored. */
+  attachmentId?: string
+  sheetName: string
+  headerRow: number
+  importedAt: string
+  actorId: string
+  counts: { created: number; updated: number; unchanged: number; excluded: number; newItems: number }
+  rows: { sourceRow: number; serviceTypeId: string; itemId?: string; unitPrice: number; currency: CurrencyCode; action: 'create' | 'update' | 'unchanged' }[]
+}
+
+/* ───────────── Phase 5.0B — beneficiary initial documentation ───────────── */
+
+export interface HistoryEntry {
+  id: string
+  date: string
+  actorId: string
+  action: string
+  detail?: string
+}
+
+/** One version of a template's original Excel file (stored as a local attachment). */
+export interface TemplateFileVersion {
+  version: number
+  attachmentId: string
+  fileName: string
+  size?: number
+  uploadedAt: string
+  uploadedBy: string
+  notes?: string
+}
+
+/** Reusable form sent to beneficiaries, linked to catalog services (one global library). */
+export interface DocumentTemplate {
+  id: string
+  name: string
+  description?: string
+  serviceTypeIds: ServiceTypeId[]
+  /** Current file version (last of `files`). */
+  version: number
+  files: TemplateFileVersion[]
+  active: boolean
+  history: HistoryEntry[]
+  createdAt: string
+  createdBy: string
+  updatedAt: string
+}
+
+/** Stored status; "pending reception" is derived from the sending date. */
+export type InitialDocumentStatus = 'pending' | 'sent' | 'received' | 'correction'
+
+/** A template requested in a project — at most one per project and template. */
+export interface InitialDocument {
+  id: string
+  projectId: string
+  templateId: string
+  /** Template name when requested (kept if the template is renamed). */
+  name: string
+  status: InitialDocumentStatus
+  /** File version actually sent (snapshot). */
+  sentVersion?: number
+  sentAttachmentId?: string
+  sentAt?: string
+  sentRef?: string
+  sentTo?: string
+  receivedAt?: string
+  /** Completed versions received (local attachments, entity "initial-document"). */
+  receivedAttachmentIds: string[]
+  correctionNote?: string
+  history: HistoryEntry[]
+  createdAt: string
+  createdBy: string
+}
+
+/* ───────────── Phase 5.0C.1 — purchase-order document import ───────────── */
+
+/** Where a datum comes from in the original document. */
+export interface DocProvenance {
+  file?: string
+  page?: number
+  line?: number
+  sheet?: string
+  row?: number
+  section?: string
+}
+
+export type ImportFieldStatus = 'recognized' | 'confirm' | 'missing' | 'inconsistent'
+
+export interface PoImportField {
+  key: string
+  label: string
+  raw?: string
+  /** Value finally used (after human review). */
+  value?: string
+  /** Value detected before any correction. */
+  detected?: string
+  source?: DocProvenance
+  status: ImportFieldStatus
+  confirmed: boolean
+  edited: boolean
+  note?: string
+}
+
+export interface PoImportLine {
+  raw: string
+  description: string
+  quantity?: number
+  unit?: PriceUnit
+  unitPrice?: number
+  amount?: number
+  currency?: CurrencyCode
+  source?: DocProvenance
+  status: ImportFieldStatus
+  included: boolean
+  serviceId?: string
+  catalogItemId?: string
+  serviceItemId?: string
+  confirmed: boolean
+  note?: string
+}
+
+/** Validated import of a client PO document (kept for traceability; the PO itself is a normal PO). */
+export interface PoImportRecord {
+  id: string
+  projectId: string
+  clientId: string
+  poId: string
+  mode: 'create' | 'update'
+  source: { kind: 'pdf' | 'xlsx' | 'text'; fileName?: string; attachmentId?: string; text?: string }
+  provider: string
+  fields: PoImportField[]
+  lines: PoImportLine[]
+  warnings: string[]
+  confirmedAt: string
+  confirmedBy: string
+}
+
+/* ───────────── Phase 5.0C.2 — PO vs quotation comparison ───────────── */
+
+export type ComparisonResolution = 'accepted' | 'rejected' | 'exception'
+
+/**
+ * Human decision on one comparison row. Never deleted: a later correction
+ * supersedes it. `signature` freezes the compared values, so a decision taken
+ * on different data (PO or quotation changed) no longer applies.
+ */
+export interface PoComparisonReview {
+  id: string
+  projectId: string
+  rowKey: string
+  signature: string
+  /** Comparison result when the decision was taken (snapshot for traceability). */
+  snapshot: { label: string; status: string; differences: string[]; quote?: string; po?: string }
+  resolution: ComparisonResolution
+  reason: string
+  evidence?: string
+  date: string
+  reference?: string
+  createdAt: string
+  createdBy: string
+  supersededById?: string
 }

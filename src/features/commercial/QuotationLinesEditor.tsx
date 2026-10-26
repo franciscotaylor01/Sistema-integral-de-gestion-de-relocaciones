@@ -1,6 +1,6 @@
 import { Plus, Trash2, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Field, SelectInput, TextInput } from '@/components/ui/form'
+import { Field, SelectInput, TextArea, TextInput } from '@/components/ui/form'
 import { ServiceChip } from '@/components/ui/ServiceChip'
 import { priceUnitLabel } from '@/config/commercial'
 import { activeServiceTypes, getServiceType } from '@/config/serviceCatalog'
@@ -59,12 +59,15 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
         })
         const adjusted = l.suggestedUnitPrice !== undefined && Math.round(l.unitPrice * 100) !== Math.round(l.suggestedUnitPrice * 100)
         const e = (k: string) => errors[`lines.${i}.${k}`]
+        // Phase 5.0B: special sub-service lines take price, quantity and currency from the item.
+        const fixed = Boolean(l.serviceItemId)
         return (
           <section key={l.id ?? `new-${i}`} aria-label={`Línea ${i + 1}`} className="rounded-panel bg-surface-muted p-[14px]">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-[10px]">
                 <ServiceChip type={l.serviceTypeId} size="md" />
                 <span className="text-[13px] font-medium text-muted">Línea {i + 1}</span>
+                {fixed && <span className="rounded-full bg-accent-soft px-[9px] py-[2px] text-[12px] font-medium text-accent-strong">Subservicio especial</span>}
               </div>
               <Button
                 size="sm"
@@ -82,6 +85,7 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                 {(p) => (
                   <SelectInput
                     {...p}
+                    disabled={fixed}
                     value={l.serviceId ?? `type:${l.serviceTypeId}`}
                     onChange={(ev) => {
                       const v = ev.target.value
@@ -113,11 +117,11 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                 {(p) => <TextInput {...p} value={l.description} onChange={(ev) => set(i, { description: ev.target.value })} maxLength={160} />}
               </Field>
               <Field label="Cantidad" required error={e('quantity')}>
-                {(p) => <TextInput {...p} type="number" min={0} step="any" value={l.quantity || ''} onChange={(ev) => set(i, { quantity: Number(ev.target.value) })} />}
+                {(p) => <TextInput {...p} type="number" min={0} step="any" disabled={fixed} value={l.quantity || ''} onChange={(ev) => set(i, { quantity: Number(ev.target.value) })} />}
               </Field>
               <Field label="Unidad">
                 {(p) => (
-                  <SelectInput {...p} value={l.unit} onChange={(ev) => set(i, { unit: ev.target.value as PriceUnit })}>
+                  <SelectInput {...p} disabled={fixed} value={l.unit} onChange={(ev) => set(i, { unit: ev.target.value as PriceUnit })}>
                     {(Object.keys(priceUnitLabel) as PriceUnit[]).map((u) => (
                       <option key={u} value={u}>
                         {priceUnitLabel[u]}
@@ -127,11 +131,11 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                 )}
               </Field>
               <Field label="Precio unitario" required error={e('unitPrice')}>
-                {(p) => <TextInput {...p} type="number" min={0} step="any" inputMode="decimal" value={l.unitPrice || ''} onChange={(ev) => set(i, { unitPrice: Number(ev.target.value) })} />}
+                {(p) => <TextInput {...p} type="number" min={0} step="any" inputMode="decimal" disabled={fixed} value={l.unitPrice || ''} onChange={(ev) => set(i, { unitPrice: Number(ev.target.value) })} />}
               </Field>
               <Field label="Moneda">
                 {(p) => (
-                  <SelectInput {...p} value={l.currency} onChange={(ev) => set(i, { currency: ev.target.value as CurrencyCode, suggestedUnitPrice: undefined, priceEntryId: undefined })}>
+                  <SelectInput {...p} disabled={fixed} value={l.currency} onChange={(ev) => set(i, { currency: ev.target.value as CurrencyCode, suggestedUnitPrice: undefined, priceEntryId: undefined })}>
                     {CURRENCY_ORDER.map((c) => (
                       <option key={c} value={c}>
                         {c}
@@ -147,7 +151,8 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
             </div>
 
             <div className="mt-[12px] rounded-[14px] bg-surface px-[12px] py-[10px] text-[13px]">
-              {res.status === 'unique' && (
+              {fixed && <span className="text-ink-secondary">Exclusivo del proyecto (fuera del tarifario). El precio se modifica desde el servicio, nunca desde la cotización.</span>}
+              {!fixed && res.status === 'unique' && (
                 <span className="flex flex-wrap items-center gap-[8px]">
                   <span className="text-ink-secondary">
                     Tarifa: <span className="tabular font-semibold text-ink">{formatCurrency(res.entry.unitPrice, res.entry.currency)}</span> {priceUnitLabel[res.entry.unit]}
@@ -167,7 +172,7 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                   )}
                 </span>
               )}
-              {res.status === 'ambiguous' && (
+              {!fixed && res.status === 'ambiguous' && (
                 <span className="flex flex-col gap-[8px] text-warning">
                   <span className="flex items-center gap-[6px] font-medium">
                     <TriangleAlert aria-hidden className="size-[15px]" strokeWidth={2} />
@@ -188,7 +193,7 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                   </span>
                 </span>
               )}
-              {res.status === 'none' && <span className="text-muted">Sin tarifa vigente para este servicio, mercado y moneda: precio manual.</span>}
+              {!fixed && res.status === 'none' && <span className="text-muted">Sin tarifa vigente para este servicio, mercado y moneda: precio manual.</span>}
             </div>
 
             {adjusted && (
@@ -202,6 +207,11 @@ export function QuotationLinesEditor({ lines, onChange, project, workspace: ws, 
                 </Field>
               </div>
             )}
+            <div className="mt-[12px]">
+              <Field label="Alcance / descripción del servicio" error={e('details')} hint={fixed ? undefined : 'Se completa con la descripción del servicio en el proyecto.'}>
+                {(p) => <TextArea {...p} rows={2} value={l.details ?? ''} onChange={(ev) => set(i, { details: ev.target.value })} maxLength={600} />}
+              </Field>
+            </div>
             <div className="mt-[12px]">
               <Field label="Notas de la línea">{(p) => <TextInput {...p} value={l.notes ?? ''} onChange={(ev) => set(i, { notes: ev.target.value })} maxLength={300} />}</Field>
             </div>

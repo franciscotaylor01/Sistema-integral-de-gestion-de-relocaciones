@@ -229,7 +229,7 @@ export function buildBaseSeedDataset(): Dataset {
     ...commercial,
     requests: {},
   }
-  return { ...dataset, catalogItems: [], openOrders: [], certificates: [], attachments: [], settlementBatches: [] }
+  return { ...dataset, catalogItems: [], openOrders: [], certificates: [], attachments: [], settlementBatches: [], tariffImports: [], communications: [], documentTemplates: [], initialDocuments: [], poImports: [], poReviews: [] }
 }
 
 export function buildSeedDataset(): Dataset {

@@ -8,6 +8,7 @@ import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
 import type { Workspace } from '@/hooks/useWorkspace'
 import type { Project, ProjectService } from '@/types/domain'
+import { regularItems } from '@/domain/commercial/catalog'
 import { ServiceItemsEditor } from './ServiceItemsEditor'
 
 /** Edit the contracted sub-services of a project service; contracted prices stay frozen. */
@@ -22,7 +23,7 @@ export function ServiceItemsModal({ service, project, ws, onClose }: { service?:
 function Form({ service, project, ws, onClose }: { service: ProjectService; project: Project; ws: Workspace; onClose: () => void }) {
   const actions = useActions()
   const { run, busy, errors, formError } = useCommand()
-  const [items, setItems] = useState(() => (service.items ?? []).map((i) => ({ catalogItemId: i.catalogItemId, quantity: i.quantity })))
+  const [items, setItems] = useState(() => regularItems(service).map((i) => ({ catalogItemId: i.catalogItemId, quantity: i.quantity })))
   return (
     <form
       className="flex flex-col gap-[14px]"
@@ -33,7 +34,8 @@ function Form({ service, project, ws, onClose }: { service: ProjectService; proj
       }}
     >
       <FormError message={formError ?? errors.items} />
-      <ServiceItemsEditor ws={ws} project={project} typeId={service.typeId} items={items} onChange={setItems} errors={errors} frozen={service.items} date={DEMO_TODAY} />
+      <ServiceItemsEditor ws={ws} project={project} typeId={service.typeId} items={items} onChange={setItems} errors={errors} frozen={regularItems(service)} date={DEMO_TODAY} />
+      {service.items?.some((i) => i.special) && <p className="text-[12.5px] text-muted">Los subservicios especiales del proyecto se gestionan aparte y se conservan.</p>}
       <div className="flex justify-end gap-[10px] border-t border-line pt-[14px]">
         <Button size="sm" variant="secondary" onClick={onClose} disabled={busy}>
           Cancelar

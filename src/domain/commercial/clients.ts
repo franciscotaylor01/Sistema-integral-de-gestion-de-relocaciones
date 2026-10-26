@@ -36,6 +36,8 @@ export interface ClientInput {
   requiresCertificate?: boolean
   /** Phase 4.7: payment term in calendar (default) or business days. */
   paymentDayType?: PaymentDayType
+  /** Phase 5.0A: only approved tariff prices apply. */
+  requiresPriceApproval?: boolean
   contacts: ContactInput[]
   notes?: string
 }
@@ -109,6 +111,7 @@ function fromInput(input: ClientInput, ctx: DomainContext): Omit<Client, 'id' | 
       poMode: input.poMode ?? (input.requiresPurchaseOrder ? 'project' : 'none'),
       requiresCertificate: input.requiresCertificate || undefined,
       paymentDayType: input.paymentDayType === 'business' ? 'business' : undefined,
+      requiresPriceApproval: input.requiresPriceApproval || undefined,
     },
     notes: input.notes?.trim() || undefined,
   }

@@ -162,11 +162,14 @@ export type PriceResolution =
  *   2. the highest quantity tier not above the requested quantity wins.
  * Two rules tied on both criteria are ambiguous and returned for user review.
  */
-export function resolvePrice(ds: Pick<Dataset, 'priceEntries'>, q: PriceQuery): PriceResolution {
+export function resolvePrice(ds: Pick<Dataset, 'priceEntries'> & Partial<Pick<Dataset, 'clients'>>, q: PriceQuery): PriceResolution {
+  // Clients with mandatory commercial approval: only approved prices apply.
+  const approvedOnly = Boolean(ds.clients?.find((c) => c.id === q.clientId)?.policy.requiresPriceApproval)
   const applicable = ds.priceEntries.filter(
     (e) =>
       e.active &&
       !isPendingVersion(e) &&
+      (!approvedOnly || Boolean(e.approvedAt)) &&
       e.clientId === q.clientId &&
       e.serviceTypeId === q.serviceTypeId &&
       (e.itemId ?? '') === (q.itemId ?? '') &&

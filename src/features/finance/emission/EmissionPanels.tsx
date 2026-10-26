@@ -1,4 +1,4 @@
-import { CalendarClock, Copy, FilePenLine, Stamp } from 'lucide-react'
+import { CalendarClock, Copy, Download, FilePenLine, Stamp } from 'lucide-react'
 import { useState } from 'react'
 import { useToast } from '@/components/feedback/useToast'
 import { Button } from '@/components/ui/Button'
@@ -10,7 +10,7 @@ import { Timeline } from '@/components/ui/Timeline'
 import { DEMO_TODAY } from '@/config/brand'
 import { invoiceKindLabel } from '@/config/finance'
 import { formatFiscalNumber, type EmissionInput } from '@/domain/finance/emission'
-import { invoiceTotals, lineSubtotal } from '@/domain/finance/derive'
+import { invoiceTotals } from '@/domain/finance/derive'
 import { subMoney } from '@/domain/finance/money'
 import { BUSINESS_DAY_POLICY, computeDueDate, resolvePaymentTerms } from '@/domain/finance/terms'
 import { activityKindMeta } from '@/features/projects/activityMeta'
@@ -22,6 +22,12 @@ import { formatDate, formatDateTime } from '@/lib/dates'
 import { formatMoney } from '@/lib/format'
 import type { Invoice, InvoiceKind, PaymentDayType } from '@/types/domain'
 import { copyText } from './copy'
+import { StatusBadge } from '@/components/ui/StatusBadge'
+import { priceUnitLabel } from '@/config/commercial'
+import { invoicePreparation, preparationText, type PrepLine } from '@/domain/finance/invoicePrep'
+import { downloadFile } from '@/features/commercial/documents/emails'
+import { Flow, footers } from '@/features/commercial/documents/layout'
+import { PdfDocument } from '@/lib/pdf'
 
 const dayTypeLabel: Record<PaymentDayType, string> = { calendar: 'días corridos', business: 'días hábiles' }
 const sourceLabel = { 'purchase-order': 'OC del proyecto', 'open-order': 'OC abierta', client: 'Condición del cliente', manual: 'Condición manual documentada' } as const
@@ -38,95 +44,161 @@ function orderRefs(ws: Workspace, inv: Invoice) {
 
 /* ───────────── Preparation (data to copy into ARCA) ───────────── */
 
-export function PrepareInvoiceCard({ ws, inv }: { ws: Workspace; inv: Invoice }) {
+const prepStatusMeta = {
+  ok: undefined,
+  missing: { label: 'Falta en SIGR', tone: 'warning' },
+  fiscal: { label: 'Completar en el sistema fiscal', tone: 'info' },
+} as const
+
+/**
+ * Phase 5.0C.3 — assisted preparation in the loading order of the fiscal
+ * system. Every datum shows its origin; SIGR only prepares data to copy.
+ */
+export function PrepareInvoiceCard({ ws, inv, onConfirm }: { ws: Workspace; inv: Invoice; onConfirm?: () => void }) {
   const { notify } = useToast()
-  const client = ws.clientById.get(inv.clientId)
-  const issuer = ws.legalEntities.find((e) => e.id === inv.issuerId)
-  const project = ws.projectById.get(inv.projectId)
-  const refs = orderRefs(ws, inv)
-  const t = invoiceTotals(inv)
+  const prep = invoicePreparation(ws.dataset, inv.id, DEMO_TODAY)
   const m = (v: number) => formatMoney(v, inv.currency)
-  const fields: [string, string][] = [
-    ['Emisor', issuer?.name ?? '—'],
-    ['Cliente', client?.name ?? '—'],
-    ['Razón social', client?.legalName ?? '—'],
-    ['Identificación fiscal', client?.taxId || 'No informada en SIGR'],
-    ['Domicilio de facturación', client?.billingAddress || 'No informado en SIGR'],
-    ['Proyecto', project ? `${project.code}` : '—'],
-    ['OC (n.º oficial)', refs.orders.join(', ') || 'Sin OC'],
-    ['Certificado aprobado', refs.certs.join(', ') || 'No aplica'],
-    ['Moneda', inv.currency],
-  ]
-  const lineText = inv.lines.map((l) => `${l.description}\t${l.quantity}\t${l.unitPrice}\t${lineSubtotal(l)}`)
-  const all = [...fields.map(([k, v]) => `${k}: ${v}`), '', 'Descripción\tCantidad\tPrecio unitario\tImporte', ...lineText, '', `Subtotal comercial: ${t.subtotal}`, `Total comercial: ${t.total}`].join('\n')
+  const header = `${inv.number} · ${ws.projectById.get(inv.projectId)?.code ?? ''} · ${ws.clientById.get(inv.clientId)?.name ?? ''}`
+  const all = preparationText(prep, header)
   const copy = async (text: string, what: string) => notify({ title: (await copyText(text)) ? `${what} copiado` : 'No se pudo copiar' })
+  const lineText = (l: PrepLine) => `${l.description}\t${l.quantity}\t${l.unitPrice}\t${l.subtotal}`
+  const download = () => {
+    const pdf = new PdfDocument({ title: `Preparación ${inv.number}`, author: 'SIGR' })
+    const f = new Flow(pdf)
+    for (const line of all.split('\n')) f.paragraph(line || ' ', { size: line && /^\d\.|^NO DISPONIBLE/.test(line) ? 10 : 9, bold: /^\d\.|^NO DISPONIBLE/.test(line), gap: 1 })
+    footers(pdf, `Preparación ${inv.number} — no es un comprobante fiscal`, DEMO_TODAY.split('-').reverse().join('/'))
+    downloadFile(pdf.toBytes(), `Preparacion-${inv.number}.pdf`)
+  }
   return (
     <Card aria-labelledby="prep-title" className="px-[19px] pb-[19px] pt-[19px]">
       <SectionTitle
         id="prep-title"
         title="Preparar factura"
-        description="Datos para emitir el comprobante en el sistema externo (ARCA). SIGR no emite facturas fiscales."
+        description="Datos ordenados para cargar el comprobante en el sistema fiscal externo (ARCA). SIGR no emite ni se conecta: solo prepara la información."
         action={
-          <Button size="sm" variant="outline" onClick={() => copy(all, 'Resumen')}>
-            <Copy aria-hidden className="size-[15px]" strokeWidth={1.9} />
-            Copiar todo
-          </Button>
+          <div className="flex flex-wrap gap-[8px]">
+            <Button size="sm" variant="outline" onClick={() => copy(all, 'Resumen')}>
+              <Copy aria-hidden className="size-[15px]" strokeWidth={1.9} />
+              Copiar todo
+            </Button>
+            <Button size="sm" variant="outline" onClick={download}>
+              <Download aria-hidden className="size-[15px]" strokeWidth={1.9} />
+              Descargar resumen
+            </Button>
+          </div>
         }
       />
-      <dl className="mt-[16px] grid gap-[6px] sm:grid-cols-2">
-        {fields.map(([k, v]) => (
-          <div key={k} className="flex items-center justify-between gap-2 rounded-[12px] bg-surface-muted px-[12px] py-[8px] text-[13.5px]">
-            <span className="min-w-0">
-              <dt className="text-[12px] text-muted">{k}</dt>
-              <dd className={cn('truncate font-medium', v.startsWith('No informad') && 'font-normal text-warning')}>{v}</dd>
-            </span>
-            <button type="button" aria-label={`Copiar ${k}`} onClick={() => copy(v, k)} className="grid size-[28px] shrink-0 place-items-center rounded-full text-ink-secondary hover:bg-surface">
-              <Copy aria-hidden className="size-[13px]" strokeWidth={1.9} />
-            </button>
-          </div>
+      {(prep.missing.length > 0 || prep.fiscalPending.length > 0) && (
+        <div className="mt-[14px] grid gap-[8px] md:grid-cols-2">
+          {prep.missing.length > 0 && (
+            <p className="rounded-[14px] bg-warning-soft px-[12px] py-[9px] text-[12.5px] leading-[1.45] text-warning">
+              <span className="font-semibold">Faltan en SIGR ({prep.missing.length}):</span> {prep.missing.join(', ')}. No se inventan: completalos en la ficha correspondiente o en el sistema fiscal.
+            </p>
+          )}
+          {prep.fiscalPending.length > 0 && (
+            <p className="rounded-[14px] bg-info-soft px-[12px] py-[9px] text-[12.5px] leading-[1.45] text-info">
+              <span className="font-semibold">A completar en el sistema fiscal:</span> {prep.fiscalPending.join(', ')}.
+            </p>
+          )}
+        </div>
+      )}
+      <ol className="mt-[16px] flex flex-col gap-[14px]">
+        {prep.blocks.map((b, bi) => (
+          <li key={b.key} aria-label={`${bi + 1}. ${b.title}`} className="rounded-panel bg-surface-muted px-[14px] py-[12px]">
+            <p className="text-[14px] font-semibold">
+              <span className="mr-[8px] inline-grid size-[22px] place-items-center rounded-full bg-contrast text-[12px] text-on-contrast">{bi + 1}</span>
+              {b.title}
+            </p>
+            {b.fields.length > 0 && (
+              <dl className="mt-[10px] grid gap-[6px] sm:grid-cols-2">
+                {b.fields.map((fl, fi) => (
+                  <div key={`${fl.label}-${fi}`} className="flex items-start justify-between gap-2 rounded-[12px] bg-surface px-[12px] py-[8px] text-[13.5px]">
+                    <span className="min-w-0">
+                      <dt className="text-[12px] text-muted">{fl.label}</dt>
+                      <dd className={cn('break-words font-medium', fl.status !== 'ok' && 'font-normal')}>
+                        {fl.status === 'ok' ? (
+                          b.key === 'amounts' && /^-?\d+(\.\d+)?$/.test(fl.value ?? '') ? m(Number(fl.value)) : fl.value
+                        ) : (
+                          <StatusBadge meta={prepStatusMeta[fl.status]!} />
+                        )}
+                      </dd>
+                      <span className="block text-[11.5px] text-muted">
+                        {fl.source}
+                        {fl.note ? ` · ${fl.note}` : ''}
+                      </span>
+                    </span>
+                    {fl.status === 'ok' && fl.value && (
+                      <button type="button" aria-label={`Copiar ${fl.label}`} onClick={() => copy(fl.value!, fl.label)} className="grid size-[28px] shrink-0 place-items-center rounded-full text-ink-secondary hover:bg-surface-muted">
+                        <Copy aria-hidden className="size-[13px]" strokeWidth={1.9} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </dl>
+            )}
+            {b.key === 'lines' && (
+              <div className="mt-[10px] overflow-x-auto rounded-[12px] bg-surface p-[6px]">
+                <table className="w-full min-w-[640px] text-[13.5px]">
+                  <thead>
+                    <tr className="text-left text-[12px] text-muted">
+                      <th className="px-[8px] py-[6px] font-normal">Concepto</th>
+                      <th className="px-[8px] py-[6px] text-right font-normal">Cant.</th>
+                      <th className="px-[8px] py-[6px] text-right font-normal">Precio unit.</th>
+                      <th className="px-[8px] py-[6px] text-right font-normal">Importe</th>
+                      <th className="w-[36px]" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prep.lines.map((l) => (
+                      <tr key={l.index} className="border-t border-line align-top">
+                        <td className="px-[8px] py-[7px]">
+                          <span className="block font-medium">{l.description}</span>
+                          {l.details && <span className="block text-[12px] text-ink-secondary">{l.details}</span>}
+                          <span className="block text-[11.5px] text-muted">{l.origins.join(' · ') || 'Sin referencia comercial'}</span>
+                        </td>
+                        <td className="tabular px-[8px] py-[7px] text-right">
+                          {l.quantity}
+                          {l.unit && <span className="block text-[11.5px] text-muted">{priceUnitLabel[l.unit]}</span>}
+                        </td>
+                        <td className="tabular px-[8px] py-[7px] text-right">{m(l.unitPrice)}</td>
+                        <td className="tabular px-[8px] py-[7px] text-right font-semibold">{m(l.subtotal)}</td>
+                        <td>
+                          <button type="button" aria-label={`Copiar línea ${l.index + 1}`} onClick={() => copy(lineText(l), 'Línea')} className="grid size-[28px] place-items-center rounded-full text-ink-secondary hover:bg-surface-muted">
+                            <Copy aria-hidden className="size-[13px]" strokeWidth={1.9} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {b.key === 'confirmation' && (
+              <div className="mt-[8px] flex flex-wrap items-center justify-between gap-3 text-[13px] text-ink-secondary">
+                <span>Emití el comprobante en el sistema fiscal y registrá número, fecha, importe y comprobante. SIGR calcula el vencimiento desde la fecha de emisión y la factura pasa a Cobranzas.</span>
+                {onConfirm && (
+                  <Button size="sm" onClick={onConfirm}>
+                    <Stamp aria-hidden className="size-[15px]" strokeWidth={1.9} />
+                    Confirmar emisión externa
+                  </Button>
+                )}
+              </div>
+            )}
+          </li>
         ))}
-      </dl>
-      <div className="mt-[12px] overflow-x-auto rounded-panel bg-surface-muted p-[8px]">
-        <table className="w-full min-w-[520px] text-[13.5px]">
-          <thead>
-            <tr className="text-left text-[12px] text-muted">
-              <th className="px-[8px] py-[6px] font-normal">Descripción</th>
-              <th className="px-[8px] py-[6px] text-right font-normal">Cant.</th>
-              <th className="px-[8px] py-[6px] text-right font-normal">Precio unit.</th>
-              <th className="px-[8px] py-[6px] text-right font-normal">Importe</th>
-              <th className="w-[36px]" />
-            </tr>
-          </thead>
-          <tbody>
-            {inv.lines.map((l, i) => (
-              <tr key={l.id} className="border-t border-line">
-                <td className="px-[8px] py-[7px] font-medium">{l.description}</td>
-                <td className="tabular px-[8px] py-[7px] text-right">{l.quantity}</td>
-                <td className="tabular px-[8px] py-[7px] text-right">{m(l.unitPrice)}</td>
-                <td className="tabular px-[8px] py-[7px] text-right font-semibold">{m(lineSubtotal(l))}</td>
-                <td>
-                  <button type="button" aria-label={`Copiar línea ${i + 1}`} onClick={() => copy(lineText[i], 'Línea')} className="grid size-[28px] place-items-center rounded-full text-ink-secondary hover:bg-surface">
-                    <Copy aria-hidden className="size-[13px]" strokeWidth={1.9} />
-                  </button>
-                </td>
-              </tr>
+      </ol>
+      {prep.unavailable.length > 0 && (
+        <div className="mt-[14px] rounded-panel border border-dashed border-line-strong px-[14px] py-[12px]">
+          <p className="text-[13.5px] font-semibold">No disponible para facturar</p>
+          <ul className="mt-[6px] flex flex-col gap-[4px] text-[13px]">
+            {prep.unavailable.map((u, i) => (
+              <li key={`${u.label}-${i}`}>
+                <span className="font-medium">{u.label}:</span> <span className="text-ink-secondary">{u.reason}</span>
+              </li>
             ))}
-          </tbody>
-        </table>
-      </div>
-      <dl className="ml-auto mt-[10px] w-full max-w-[340px] text-[14px]">
-        <div className="flex justify-between py-[3px]">
-          <dt className="text-ink-secondary">Subtotal comercial</dt>
-          <dd className="tabular font-medium">{m(t.subtotal)}</dd>
+          </ul>
         </div>
-        <div className="flex justify-between py-[3px]">
-          <dt className="font-semibold">Total comercial</dt>
-          <dd className="tabular font-semibold">{m(t.total)}</dd>
-        </div>
-      </dl>
-      <p className="mt-[10px] rounded-[14px] bg-info-soft px-[12px] py-[9px] text-[12.5px] leading-[1.5] text-info">
-        IVA, alícuotas, tipo de cambio y demás importes fiscales se determinan al emitir el comprobante en ARCA. SIGR no los calcula: registralos al confirmar la emisión.
-      </p>
+      )}
     </Card>
   )
 }

@@ -3,6 +3,7 @@ import { projectCommercial } from '../commercial/traceability'
 import type { Dataset } from '../dataset'
 import { invoiceFinancials, obligationFinancials } from './derive'
 import { addMoney, cmpMoney, subMoney } from './money'
+import { agreedPrice } from '../commercial/specialItems'
 
 type PerCurrency<T> = Partial<Record<CurrencyCode, T>>
 
@@ -64,8 +65,9 @@ export function projectResults(ds: Dataset, project: ProjectRecord, today: strin
   for (const s of ds.services.filter((x) => x.projectId === project.id)) {
     if (s.estimatedCost) get(project.currency).estimatedCost = addMoney(get(project.currency).estimatedCost, s.estimatedCost)
     // Clients without mandatory quotes: the agreed service price is the commercial basis.
-    if (client && !client.policy.requiresApprovedQuote && s.price && !ds.quotations.some((q) => q.projectId === project.id && q.status === 'approved' && q.lines.some((l) => l.serviceId === s.id))) {
-      get(project.currency).agreed = addMoney(get(project.currency).agreed, s.price)
+    const price = agreedPrice(ds, project, s)
+    if (client && !client.policy.requiresApprovedQuote && price && !ds.quotations.some((q) => q.projectId === project.id && q.status === 'approved' && q.lines.some((l) => l.serviceId === s.id))) {
+      get(project.currency).agreed = addMoney(get(project.currency).agreed, price)
     }
   }
   for (const inv of ds.invoices.filter((i) => i.projectId === project.id && i.lifecycle === 'issued')) {

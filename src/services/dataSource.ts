@@ -1,5 +1,8 @@
 import type { CatalogItemInput, OpenOrderInput, ServiceItemInput } from '@/domain/commercial/catalog'
 import type { CertificateInput } from '@/domain/commercial/certificates'
+import type { SpecialItemInput } from '@/domain/commercial/specialItems'
+import type { TariffRowChange } from '@/domain/commercial/tariffGrid'
+import type { TariffImportInput } from '@/domain/commercial/tariffImport'
 import type { EmissionInput } from '@/domain/finance/emission'
 import type { BatchInput, SharingInput } from '@/domain/finance/batches'
 import type { WithholdingInput } from '@/domain/finance/receipts'
@@ -11,7 +14,11 @@ import type { Dataset } from '@/domain/dataset'
 import type { ClientInput } from '@/domain/commercial/clients'
 import type { PriceEntryInput } from '@/domain/commercial/pricing'
 import type { PurchaseOrderInput } from '@/domain/commercial/purchaseOrders'
-import type { ApprovalInput, QuotationDraftInput } from '@/domain/commercial/quotations'
+import type { ApprovalInput, QuotationDraftInput, SendInput } from '@/domain/commercial/quotations'
+import type { CommunicationInput } from '@/domain/commercial/documents'
+import type { PoImportInput } from '@/domain/commercial/poImport'
+import type { ReviewInput } from '@/domain/commercial/poComparison'
+import type { InitialDocsSendInput, ReceptionInput, TemplateFileInput, TemplateInput } from '@/domain/initialDocuments'
 import type { CostInput } from '@/domain/finance/costs'
 import type { ExchangeRateInput } from '@/domain/finance/fx'
 import type { InvoiceInput } from '@/domain/finance/invoices'
@@ -66,7 +73,21 @@ export interface SigrDataSource {
   updatePriceEntry(entryId: string, input: PriceEntryInput, options?: { acceptOverlap?: boolean }): Promise<CommandResult>
   createQuotation(projectId: string): Promise<CommandResult<{ quotationId: string }>>
   updateQuotationDraft(quotationId: string, input: QuotationDraftInput): Promise<CommandResult>
-  sendQuotation(quotationId: string): Promise<CommandResult>
+  sendQuotation(quotationId: string, input?: SendInput): Promise<CommandResult>
+  markQuotationReady(quotationId: string): Promise<CommandResult>
+  reopenQuotationDraft(quotationId: string): Promise<CommandResult>
+  registerQuotationSent(quotationId: string, input: CommunicationInput, requestId: string): Promise<CommandResult<{ communicationId: string; duplicate: boolean }>>
+  registerTariffSent(clientId: string, input: CommunicationInput, requestId: string): Promise<CommandResult<{ communicationId: string; duplicate: boolean }>>
+  createTemplate(input: TemplateInput, file: TemplateFileInput | undefined, requestId: string): Promise<CommandResult<{ templateId: string; duplicate: boolean }>>
+  updateTemplate(templateId: string, input: TemplateInput): Promise<CommandResult>
+  replaceTemplateFile(templateId: string, file: TemplateFileInput): Promise<CommandResult>
+  requestInitialDocuments(projectId: string, templateIds: string[]): Promise<CommandResult>
+  discardInitialDocument(docId: string): Promise<CommandResult>
+  registerInitialDocsSent(projectId: string, docIds: string[], input: InitialDocsSendInput, requestId: string): Promise<CommandResult<{ communicationId: string; duplicate: boolean }>>
+  registerInitialDocReceived(docId: string, input: ReceptionInput): Promise<CommandResult>
+  requestInitialDocCorrection(docId: string, note: string): Promise<CommandResult>
+  confirmPoImport(input: PoImportInput, requestId: string): Promise<CommandResult<{ poId: string; importId: string; duplicate: boolean }>>
+  reviewComparisonRow(projectId: string, rowKey: string, input: ReviewInput): Promise<CommandResult>
   approveQuotation(quotationId: string, input: ApprovalInput): Promise<CommandResult>
   rejectQuotation(quotationId: string, reason: string): Promise<CommandResult>
   createQuotationVersion(quotationId: string): Promise<CommandResult<{ quotationId: string }>>
@@ -110,9 +131,16 @@ export interface SigrDataSource {
   updateCatalogItem(itemId: string, input: CatalogItemInput): Promise<CommandResult>
   setOfferedServices(clientId: string, typeIds: string[]): Promise<CommandResult>
   approvePriceEntry(entryId: string, approvalRef: string): Promise<CommandResult>
+  saveTariffGrid(clientId: string, input: { changes: TariffRowChange[]; offeredServices?: string[] }): Promise<CommandResult>
+  applyTariffImport(clientId: string, input: TariffImportInput, requestId: string): Promise<CommandResult<{ importId: string; duplicate: boolean }>>
   createOpenOrder(input: OpenOrderInput, requestId: string): Promise<CommandResult<{ openOrderId: string; duplicate: boolean }>>
   setOpenOrderStatus(openOrderId: string, status: OpenOrderStatus): Promise<CommandResult>
   updateServiceItems(serviceId: string, items: ServiceItemInput[]): Promise<CommandResult>
+  setServiceDescription(serviceId: string, text: string): Promise<CommandResult>
+  addSpecialItem(serviceId: string, input: SpecialItemInput): Promise<CommandResult<{ itemId: string }>>
+  updateSpecialItem(serviceId: string, itemId: string, input: Omit<SpecialItemInput, 'approvalRef'>): Promise<CommandResult>
+  approveSpecialItem(serviceId: string, itemId: string, approvalRef: string): Promise<CommandResult>
+  removeSpecialItem(serviceId: string, itemId: string): Promise<CommandResult>
   createCertificate(input: CertificateInput, requestId: string): Promise<CommandResult<{ certificateId: string; duplicate: boolean }>>
   submitCertificate(certificateId: string, input: { externalNumber: string; date: string }): Promise<CommandResult>
   approveCertificate(certificateId: string, input: { date: string }): Promise<CommandResult>

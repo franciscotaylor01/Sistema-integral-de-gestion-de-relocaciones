@@ -1,4 +1,4 @@
-import { CopyPlus, FileCheck2, Save, Send, ThumbsDown, Trash2 } from 'lucide-react'
+import { CopyPlus, Download, FileCheck2, Mail, Save, Send, ThumbsDown, Trash2, Undo2 } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
@@ -18,10 +18,11 @@ import { ServiceChip } from '@/components/ui/ServiceChip'
 import { Skeleton } from '@/components/ui/Skeleton'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
-import { billingMilestoneLabel, priceUnitLabel, quotationStatusMeta } from '@/config/commercial'
+import { billingMilestoneLabel, priceUnitLabel, quotationStageMeta } from '@/config/commercial'
 import { clientPath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
-import { effectiveStatus, isAuthorizer, lineTotal, quotationTotals, type QuotationLineInput } from '@/domain/commercial/quotations'
+import { quotationDocument } from '@/domain/commercial/documents'
+import { effectiveStatus, isAuthorizer, lineTotal, quotationStage, quotationTotals, type QuotationLineInput } from '@/domain/commercial/quotations'
 import { NotFoundPage } from '@/features/sections/NotFoundPage'
 import { useActions } from '@/hooks/useActions'
 import { useCommand } from '@/hooks/useCommand'
@@ -35,11 +36,16 @@ import type { Quotation, QuotationLine } from '@/types/domain'
 import { ApproveQuotationModal } from './ApproveQuotationModal'
 import { PurchaseOrderModal } from './PurchaseOrderModal'
 import { QuotationLinesEditor } from './QuotationLinesEditor'
+import { EmailModal } from './documents/EmailModal'
+import { downloadFile, quotationEmail } from './documents/emails'
+import { dmy } from './documents/layout'
+import { quotationPdf } from './documents/quotationPdf'
 
 const sourceMeta = {
   'price-list': { label: 'Tarifa', tone: 'success' },
   adjusted: { label: 'Ajustado', tone: 'warning' },
   manual: { label: 'Manual', tone: 'neutral' },
+  special: { label: 'Especial', tone: 'accent' },
 } as const
 
 export function QuotationPage() {
@@ -68,7 +74,13 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
   const project = ws.projectById.get(q.projectId)!
   const client = ws.clientById.get(q.clientId)
   const status = effectiveStatus(q, DEMO_TODAY)
-  const isDraft = q.status === 'draft'
+  const stage = quotationStage(q, DEMO_TODAY)
+  /** Editable only while a plain draft; "ready" drafts are frozen for sending. */
+  const isDraft = q.status === 'draft' && !q.preparedAt
+  const isReady = stage === 'ready'
+  const communications = ws.communications.filter((c) => c.quotationId === q.id).sort((a, b) => b.registeredAt.localeCompare(a.registeredAt))
+  const makePdf = () => quotationPdf(quotationDocument(ws.dataset, q.id, DEMO_TODAY), dmy(DEMO_TODAY))
+  const fileName = () => quotationDocument(ws.dataset, q.id, DEMO_TODAY).fileName
   const versions = ws.quotations.filter((x) => x.number === q.number).sort((a, b) => b.version - a.version)
   const linkedPos = ws.purchaseOrders.filter((p) => p.quotationId === q.id)
   const supersededBy = q.supersededById ? ws.quotationById.get(q.supersededById) : undefined
@@ -81,7 +93,7 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
   const [validUntil, setValidUntil] = useState(q.validUntil)
   const [notes, setNotes] = useState(q.notes ?? '')
   const dirty = isDraft && (JSON.stringify(lines) !== JSON.stringify(initialLines) || issueDate !== q.issueDate || validUntil !== q.validUntil || notes !== (q.notes ?? ''))
-  const [dialog, setDialog] = useState<'send' | 'reject' | 'discard' | 'version' | 'approve' | 'po' | null>(null)
+  const [dialog, setDialog] = useState<'email' | 'register' | 'reject' | 'discard' | 'version' | 'approve' | 'po' | null>(null)
 
   const draftTotals = quotationTotals(lines.map((l) => ({ ...l, quantity: l.quantity || 0, unitPrice: l.unitPrice || 0 })))
   /** Saves and re-syncs local state with the stored draft (new lines get ids). */
@@ -98,7 +110,7 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
         eyebrow={
           <div className="flex flex-wrap items-center gap-[10px]">
             <BackLink to={`${projectPath(project.id)}?tab=finanzas`} label={project.code} />
-            <StatusBadge variant="soft" meta={quotationStatusMeta[status]} />
+            <StatusBadge variant="soft" meta={quotationStageMeta[stage]} />
             {supersededBy && <MetaBadge>Reemplazada por v{supersededBy.version}</MetaBadge>}
           </div>
         }
@@ -139,14 +151,38 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
                 <Button
                   onClick={async () => {
                     if (dirty && !(await run(saveDraft))) return
-                    setDialog('send')
+                    await run(() => actions.markQuotationReady(q.id), { title: 'Cotización preparada para envío', description: 'El contenido quedó bloqueado. Descargá el PDF o prepará el email.' })
                   }}
                   disabled={busy}
                 >
                   <Send aria-hidden className="size-[16px]" strokeWidth={1.9} />
-                  Enviar al cliente
+                  Preparar para envío
                 </Button>
               </>
+            )}
+            {isReady && (
+              <Button variant="outline" disabled={busy} onClick={() => run(() => actions.reopenQuotationDraft(q.id), { title: 'Volvió a borrador' })}>
+                <Undo2 aria-hidden className="size-[16px]" strokeWidth={1.9} />
+                Volver a borrador
+              </Button>
+            )}
+            {!isDraft && (
+              <Button variant="outline" onClick={() => downloadFile(makePdf(), fileName())}>
+                <Download aria-hidden className="size-[16px]" strokeWidth={1.9} />
+                Descargar PDF
+              </Button>
+            )}
+            {isReady && (
+              <Button variant="outline" onClick={() => setDialog('register')}>
+                <FileCheck2 aria-hidden className="size-[16px]" strokeWidth={1.9} />
+                Registrar envío
+              </Button>
+            )}
+            {(isReady || status === 'sent' || status === 'expired') && (
+              <Button variant={isReady ? 'primary' : 'outline'} onClick={() => setDialog('email')}>
+                <Mail aria-hidden className="size-[16px]" strokeWidth={1.9} />
+                Preparar email
+              </Button>
             )}
             {(status === 'sent' || status === 'expired') && (
               <Button variant="outline" onClick={() => setDialog('reject')}>
@@ -154,7 +190,7 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
                 Registrar rechazo
               </Button>
             )}
-            {!isDraft && !versions.some((v) => v.status === 'draft') && (
+            {q.status !== 'draft' && !versions.some((v) => v.status === 'draft') && (
               <Button variant="outline" onClick={() => setDialog('version')}>
                 <CopyPlus aria-hidden className="size-[16px]" strokeWidth={1.9} />
                 Nueva versión
@@ -209,7 +245,7 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
                       </span>
                       <span className="flex items-center gap-[12px] text-[13.5px]">
                         <AmountsText inline amounts={quotationTotals(v.lines)} />
-                        <StatusBadge meta={quotationStatusMeta[effectiveStatus(v, DEMO_TODAY)]} className={v.id === q.id ? 'text-on-contrast' : undefined} />
+                        <StatusBadge meta={quotationStageMeta[quotationStage(v, DEMO_TODAY)]} className={v.id === q.id ? 'text-on-contrast' : undefined} />
                       </span>
                     </Link>
                   </li>
@@ -246,8 +282,19 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
               <dl className="mt-[14px] grid grid-cols-2 gap-x-4 gap-y-[14px]">
                 <Fact label="Emisión">{formatDate(q.issueDate)}</Fact>
                 <Fact label="Válida hasta">{formatDate(q.validUntil)}</Fact>
+                {q.preparedAt && q.status === 'draft' && <Fact label="Preparada">{formatDate(q.preparedAt)}</Fact>}
                 {q.sentAt && <Fact label="Enviada">{formatDate(q.sentAt)}</Fact>}
                 {q.approvedAt && <Fact label="Aprobada">{formatDate(q.approvedAt)}</Fact>}
+                {q.sentRef && (
+                  <Fact label="Referencia de envío" className="col-span-2">
+                    <span className="whitespace-normal">{q.sentRef}</span>
+                  </Fact>
+                )}
+                {q.approvalRef && (
+                  <Fact label="Referencia de aprobación" className="col-span-2">
+                    <span className="whitespace-normal">{q.approvalRef}</span>
+                  </Fact>
+                )}
                 {q.approvedBy && (
                   <Fact label="Aprobada por" className="col-span-2">
                     <span className="whitespace-normal">{q.approvedBy}</span>
@@ -272,6 +319,21 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
               </p>
             )}
           </Card>
+          <Card aria-labelledby="quote-comms" className="px-[20px] pb-[18px] pt-[20px]">
+            <SectionTitle id="quote-comms" size="sm" title="Envíos registrados" description="Registro manual: SIGR no envía emails." />
+            {communications.length === 0 ? (
+              <p className="mt-[12px] text-[13px] text-muted">{isReady ? 'Preparada, todavía sin envío registrado.' : 'Sin envíos registrados.'}</p>
+            ) : (
+              <ul className="mt-[12px] flex flex-col gap-[8px]">
+                {communications.map((c) => (
+                  <li key={c.id} className="rounded-[14px] bg-surface-muted px-[12px] py-[10px] text-[13px]">
+                    <span className="block font-medium">Enviado el {formatDate(c.sentAt)}{c.reference ? ` · ${c.reference}` : ''}</span>
+                    <span className="block truncate text-muted">{c.recipients ? `A ${c.recipients} · ` : ''}{c.subject}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
           {linkedPos.length > 0 && (
             <Card aria-labelledby="quote-pos" className="px-[20px] pb-[18px] pt-[20px]">
               <SectionTitle id="quote-pos" size="sm" title="Órdenes de compra" />
@@ -290,16 +352,16 @@ function QuotationView({ quotation: q, workspace: ws }: { quotation: Quotation; 
         </div>
       </motion.div>
 
-      <ConfirmDialog
-        open={dialog === 'send'}
+      <EmailModal
+        open={dialog === 'email' || dialog === 'register'}
         onClose={() => setDialog(null)}
-        title="Enviar cotización"
-        confirmLabel="Enviar"
-        message="Una vez enviada no podrá editarse: los cambios requerirán una nueva versión."
-        onConfirm={async () => {
-          await actions.sendQuotation(q.id)
-          notify({ title: 'Cotización enviada', description: `${q.number} v${q.version}` })
-        }}
+        mode={dialog === 'register' ? 'register' : 'email'}
+        title={dialog === 'register' ? `Registrar envío de ${q.number} v${q.version}` : `Email para ${q.number} v${q.version}`}
+        draft={quotationEmail(quotationDocument(ws.dataset, q.id, DEMO_TODAY), user?.name)}
+        docLabel={fileName()}
+        downloads={[{ label: 'Descargar PDF', onDownload: () => downloadFile(makePdf(), fileName()) }]}
+        minDate={q.sentAt ?? q.issueDate}
+        onRegister={(input, requestId) => actions.registerQuotationSent(q.id, input, requestId)}
       />
       <ConfirmDialog
         open={dialog === 'reject'}
@@ -372,6 +434,7 @@ function ReadOnlyLines({ lines }: { lines: QuotationLine[] }) {
                     {l.serviceId ? getServiceType(l.serviceTypeId).label : 'Ítem adicional'}
                     {l.notes && ` · ${l.notes}`}
                   </span>
+                  {l.details && <span className="block whitespace-normal text-[12.5px] leading-[1.4] text-ink-secondary">{l.details}</span>}
                 </span>
               </span>
             ),

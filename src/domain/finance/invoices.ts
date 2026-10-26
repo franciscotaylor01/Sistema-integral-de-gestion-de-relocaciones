@@ -11,6 +11,8 @@ import { appendAudit } from './audit'
 import { financeIndex, invoiceTotals, lineSubtotal } from './derive'
 import { addMoney, cmpMoney, isMoney, isQuantity, subMoney } from './money'
 import { nextNumber } from './numbering'
+import { billableUnits, isBillableItem } from '../commercial/specialItems'
+import { authorizedUnits, type AuthorizedUnit } from '../commercial/poComparison'
 
 /** Net amount already invoiced per service and currency (drafts included, cancelled excluded). */
 export function billedByService(ds: Pick<Dataset, 'invoices'>, projectId: string, excludeInvoiceId?: string): Map<string, Partial<Record<CurrencyCode, number>>> {
@@ -101,6 +103,20 @@ export function billedQuantities(ds: Pick<Dataset, 'invoices'>, projectId: strin
   return out
 }
 
+/** Quantity already billed (not cancelled) for an authorised unit of an imported PO, counted only on that PO's lines. */
+export function billedForUnit(ds: Pick<Dataset, 'invoices' | 'services'>, projectId: string, unit: AuthorizedUnit, excludeInvoiceId?: string): number {
+  let q = 0
+  for (const inv of ds.invoices) {
+    if (inv.projectId !== projectId || inv.lifecycle === 'cancelled' || inv.id === excludeInvoiceId) continue
+    for (const l of inv.lines) {
+      if (l.reimbursable || l.serviceId !== unit.serviceId || !l.purchaseOrderId || !unit.purchaseOrderIds.includes(l.purchaseOrderId)) continue
+      const special = l.serviceItemId && ds.services.find((s) => s.id === l.serviceId)?.items?.find((i) => i.id === l.serviceItemId)?.special
+      if ((special ? l.serviceItemId : undefined) === unit.serviceItemId) q = qty(q + l.quantity)
+    }
+  }
+  return q
+}
+
 export interface TaxInput {
   id?: string
   label: string
@@ -138,6 +154,8 @@ export function validateInvoice(ds: Dataset, input: InvoiceInput, today: string,
   if ((input.notes?.length ?? 0) > 2000) f.notes = 'Máximo 2000 caracteres.'
 
   const billable = billableByService(ds, project.id, today, invoiceId)
+  // Phase 5.0C.3: imported POs authorise concrete units (resolved comparison); manual/open POs keep the previous rules.
+  const authorized = authorizedUnits(ds, project.id).byService
   const perService = new Map<string, number>()
   input.lines.forEach((l, i) => {
     const k = (x: string) => `lines.${i}.${x}`
@@ -168,9 +186,14 @@ export function validateInvoice(ds: Dataset, input: InvoiceInput, today: string,
     // Phase 4.6: sub-service breakdown, certificate and quantity controls (no double billing).
     if (!l.reimbursable && isQuantity(l.quantity)) {
       const item = l.serviceItemId ? service.items?.find((i) => i.id === l.serviceItemId) : undefined
+      const unit = authorized.get(service.id)?.find((u) => (u.serviceItemId ?? '') === (item?.special ? item.id : '') && (!l.purchaseOrderId || u.purchaseOrderIds.includes(l.purchaseOrderId)))
       if (l.serviceItemId && !item) f[k('serviceId')] = 'El subservicio no pertenece al servicio.'
-      if (item && isMoney(l.unitPrice) && cmpMoney(l.unitPrice, item.unitPrice) !== 0) f[k('unitPrice')] = `Precio contratado de ${item.name}: ${item.unitPrice}.`
-      let allowed: number | undefined = item?.quantity
+      else if (item && !isBillableItem(ds, project, item)) f[k('serviceId')] = `${item.name} no está autorizado para facturar (aprobación comercial u OC).`
+      // Price and quantity: what the PO authorised when it was imported and compared; otherwise the contracted item.
+      if (unit && (item?.special || !l.serviceItemId)) {
+        if (isMoney(l.unitPrice) && cmpMoney(l.unitPrice, unit.unitPrice) !== 0) f[k('unitPrice')] = `Precio autorizado por la OC: ${unit.unitPrice}.`
+      } else if (item && isMoney(l.unitPrice) && cmpMoney(l.unitPrice, item.unitPrice) !== 0) f[k('unitPrice')] = `Precio contratado de ${item.name}: ${item.unitPrice}.`
+      let allowed: number | undefined = unit && (item?.special || !l.serviceItemId) ? unit.quantity : item?.quantity
       if (policy.requiresCertificate) {
         const cert = l.certificateId ? findById(ds.certificates, l.certificateId) : undefined
         const cl = cert?.lines.find((x) => x.serviceId === l.serviceId && (x.serviceItemId ?? '') === (l.serviceItemId ?? ''))
@@ -182,7 +205,9 @@ export function validateInvoice(ds: Dataset, input: InvoiceInput, today: string,
       const key = unitKey(l)
       thisQty.set(key, qty((thisQty.get(key) ?? 0) + l.quantity))
       if (allowed !== undefined && !f[k('certificateId')]) {
-        const left = qty(allowed - (billedQty.get(key) ?? 0))
+        // Units of an imported PO are counted against that PO (earlier POs of the service do not consume them).
+        const already = unit && (item?.special || !l.serviceItemId) && !policy.requiresCertificate ? billedForUnit(ds, project.id, unit, invoiceId) : (billedQty.get(key) ?? 0)
+        const left = qty(allowed - already)
         if (thisQty.get(key)! > left) f[k('quantity')] = `Supera la cantidad ${policy.requiresCertificate ? 'certificada' : 'contratada'} pendiente de facturar (${Math.max(0, left)}).`
       }
     }
@@ -334,6 +359,7 @@ export function suggestInvoiceLines(ds: Dataset, projectId: string, currency: Cu
   const billable = billableByService(ds, projectId, today)
   const billedQty = billedQuantities(ds, projectId)
   const openOrderId = policy.poMode === 'open' ? project.openOrderId : undefined
+  const authorized = authorizedUnits(ds, projectId).byService
   return ds.services
     .filter((s) => s.projectId === projectId)
     .flatMap((s) => {
@@ -342,23 +368,25 @@ export function suggestInvoiceLines(ds: Dataset, projectId: string, currency: Cu
       if (!b || !remaining) return []
       const label = getServiceType(s.typeId).label
       const base = { serviceId: s.id, quotationId: b.quotationId, purchaseOrderId: openOrderId ? undefined : b.purchaseOrderId, openOrderId }
-      type Unit = { serviceItemId?: string; certificateId?: string; name?: string; unitPrice: number; quantity: number }
+      type Unit = { serviceItemId?: string; certificateId?: string; name?: string; unitPrice: number; quantity: number; authorized?: AuthorizedUnit }
       let units: Unit[]
       if (policy.requiresCertificate) {
         units = ds.certificates
           .filter((c) => c.projectId === projectId && c.status === 'approved' && c.currency === currency)
           .flatMap((c) => c.lines.filter((l) => l.serviceId === s.id).map((l) => ({ serviceItemId: l.serviceItemId, certificateId: c.id, name: s.items?.find((i) => i.id === l.serviceItemId)?.name, unitPrice: l.unitPrice, quantity: l.quantity })))
+      } else if (authorized.has(s.id)) {
+        units = authorized.get(s.id)!.map((u) => ({ serviceItemId: u.serviceItemId, name: u.serviceItemId ? u.label.split(' — ').slice(1).join(' — ') : undefined, unitPrice: u.unitPrice, quantity: u.quantity, authorized: u }))
       } else if (s.items?.length) {
-        units = s.items.map((i) => ({ serviceItemId: i.id, name: i.name, unitPrice: i.unitPrice, quantity: i.quantity }))
+        units = billableUnits(ds, project, s)
       } else {
         return [{ ...base, description: `${label} — ${project.code}`, quantity: 1, unitPrice: remaining }]
       }
       const out: InvoiceLineInput[] = []
       for (const u of units) {
-        const left = qty(u.quantity - (billedQty.get(unitKey(u.certificateId ? { ...u, serviceId: s.id } : { serviceId: s.id, serviceItemId: u.serviceItemId })) ?? 0))
+        const left = qty(u.quantity - (u.authorized ? billedForUnit(ds, projectId, u.authorized) : (billedQty.get(unitKey(u.certificateId ? { ...u, serviceId: s.id } : { serviceId: s.id, serviceItemId: u.serviceItemId })) ?? 0)))
         const fit = Math.min(left, Math.floor((remaining / u.unitPrice) * 1000) / 1000)
         if (fit <= 0) continue
-        out.push({ ...base, serviceItemId: u.serviceItemId, certificateId: u.certificateId, description: u.name ? `${label} — ${u.name}` : `${label} — ${project.code}`, quantity: fit, unitPrice: u.unitPrice })
+        out.push({ ...base, ...(u.authorized?.purchaseOrderIds[0] ? { purchaseOrderId: u.authorized.purchaseOrderIds[0] } : {}), serviceItemId: u.serviceItemId, certificateId: u.certificateId, description: u.name ? `${label} — ${u.name}` : `${label} — ${project.code}`, quantity: fit, unitPrice: u.unitPrice })
         remaining = subMoney(remaining, lineSubtotal({ unitPrice: u.unitPrice, quantity: fit }))
       }
       return out

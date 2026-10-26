@@ -3,7 +3,9 @@ import type { Client, CurrencyCode, OpenPurchaseOrder, ProjectRecord, PurchaseOr
 import type { Dataset } from '../dataset'
 import { addAmount, hasAmount, round2, subtractAmounts, type Amounts } from './money'
 import { approvedAmountsByService, authorizedByService, effectiveStatus, lineTotal } from './quotations'
-import { effectivePolicy, findOpenOrderItem, openOrderLive } from './catalog'
+import { basePrice, effectivePolicy, findOpenOrderItem, openOrderLive, regularItems } from './catalog'
+import { agreedPrice } from './specialItems'
+import { comparisonGate } from './poComparison'
 import { approvedCertifiedByService } from './certificates'
 
 export type CommercialStage = 'not-quoted' | 'quoted' | 'approved' | 'partially-authorized' | 'authorized' | 'approved-no-po' | 'open-order'
@@ -66,13 +68,15 @@ export function projectCommercial(ds: Dataset, project: ProjectRecord, today: st
   const authorized = authorizedByService(ds, project.id)
   const pos = ds.purchaseOrders.filter((p) => p.projectId === project.id && p.status === 'active')
   const out = new Map<string, ServiceCommercial>()
+  // Phase 5.0C.2: differences between an imported PO and the quotation must be settled before billing.
+  const gate = comparisonGate(ds, project.id)
 
   for (const s of ds.services.filter((x) => x.projectId === project.id)) {
     let quoted: Amounts = {}
     for (const q of issued) for (const l of q.lines) if (l.serviceId === s.id) quoted = addAmount(quoted, l.currency, lineTotal(l))
     const certified = certifiedBy.get(s.id) ?? {}
     if (policy.poMode === 'open') {
-      out.set(s.id, openOrderCommercial(s, project, order, quoted, certified, policy, today))
+      out.set(s.id, openOrderCommercial(ds, s, project, order, quoted, certified, policy, today))
       continue
     }
     const appr = approved.get(s.id) ?? {}
@@ -96,11 +100,13 @@ export function projectCommercial(ds: Dataset, project: ProjectRecord, today: st
     // Eligibility: every agreed requirement is checked separately.
     const met: string[] = []
     const missing: string[] = []
-    const basis: Amounts = isApproved ? appr : !policy.requiresApprovedQuote && s.price ? { [project.currency]: s.price } : {}
+    const agreed = agreedPrice(ds, project, s)
+    const basis: Amounts = isApproved ? appr : !policy.requiresApprovedQuote && agreed ? { [project.currency]: agreed } : {}
     if (policy.requiresApprovedQuote) (isApproved ? met : missing).push(isApproved ? 'Cotización aprobada' : 'Falta cotización aprobada')
     else (hasAmount(basis) ? met : missing).push(hasAmount(basis) ? 'Precio acordado (sin cotización obligatoria)' : 'Falta precio acordado')
     if (policy.requiresPurchaseOrder) {
       if (!isAuthorized) missing.push('Falta OC del cliente')
+      else if (gate.blocked.has(s.id)) missing.push(gate.blocked.get(s.id)!)
       else met.push(hasAmount(pending) ? 'OC parcial recibida' : 'OC recibida')
     } else met.push('El cliente no exige OC')
     if (!policy.requiresCertificate) {
@@ -150,6 +156,7 @@ function applyCertificate(amount: Amounts, certified: Amounts, required: boolean
  * quotation is required; the contracted (frozen) price is the basis.
  */
 function openOrderCommercial(
+  ds: Dataset,
   s: ServiceRecord,
   project: ProjectRecord,
   order: OpenPurchaseOrder | undefined,
@@ -160,15 +167,18 @@ function openOrderCommercial(
 ): ServiceCommercial {
   const met: string[] = []
   const missing: string[] = []
+  // Phase 5.0B: special items are outside the OC; they count only once explicitly approved (agreedPrice).
+  const regular = regularItems(s)
   const covered =
     order &&
-    (s.items?.length ? s.items.every((i) => findOpenOrderItem(order, s.typeId, i.catalogItemId)) : Boolean(findOpenOrderItem(order, s.typeId)))
+    (regular.length ? regular.every((i) => findOpenOrderItem(order, s.typeId, i.catalogItemId)) : basePrice(s) === undefined || Boolean(findOpenOrderItem(order, s.typeId)))
   if (!order) missing.push('Falta OC abierta vinculada al proyecto')
   else if (!openOrderLive(order, today) && !covered) missing.push(`OC ${order.number} no vigente`)
   else if (!covered) missing.push(`Ítems no autorizados por la OC ${order.number}`)
   else met.push(`OC abierta ${order.number} (${order.province})`)
-  const basis: Amounts = s.price ? { [project.currency]: s.price } : {}
-  if (!hasAmount(basis)) missing.push('Falta precio contratado')
+  const agreed = agreedPrice(ds, project, s)
+  const basis: Amounts = agreed ? { [project.currency]: agreed } : {}
+  if (!hasAmount(basis)) missing.push(s.price ? 'Subservicios especiales pendientes de aprobación comercial' : 'Falta precio contratado')
   if (!policy.requiresCertificate) {
     const ok = milestoneMet(policy.billingMilestone, s, true)
     ;(ok ? met : missing).push(`Hito: ${billingMilestoneLabel[policy.billingMilestone].toLowerCase()}${ok ? '' : ' (pendiente)'}`)

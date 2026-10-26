@@ -1,3 +1,4 @@
+import { AR_PROVINCES } from '@/config/provinces'
 import { Plus, Trash2, Undo2 } from 'lucide-react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/Button'
@@ -45,6 +46,7 @@ function EditProjectForm({ onClose, ctx }: { onClose: () => void; ctx: ProjectCo
   const [startDate, setStartDate] = useState(project.startDate)
   const [targetDate, setTargetDate] = useState(project.targetDate)
   const [notes, setNotes] = useState(project.notes ?? '')
+  const [province, setProvince] = useState(project.province ?? '')
 
   const save = async () => {
     const ok = await run(
@@ -55,6 +57,7 @@ function EditProjectForm({ onClose, ctx }: { onClose: () => void; ctx: ProjectCo
           removeParticipantIds: removing,
           origin: { country: origin.country, city: origin.city },
           destination: { country: destination.country, city: destination.city },
+          province: province !== (project.province ?? '') ? province : undefined,
           category,
           ownerId,
           operationalStatus: status,
@@ -196,6 +199,18 @@ function EditProjectForm({ onClose, ctx }: { onClose: () => void; ctx: ProjectCo
           </Field>
           <Field label="Ciudad de destino" required error={errors['destination.city']}>
             {(p) => <TextInput {...p} value={destination.city} onChange={(e) => setDestination({ ...destination, city: e.target.value })} maxLength={80} />}
+          </Field>
+          <Field label="Provincia" error={errors.province} hint={project.openOrderId ? 'Fijada por la OC abierta del proyecto.' : 'Opcional.'}>
+            {(p) => (
+              <SelectInput {...p} value={province} disabled={Boolean(project.openOrderId)} onChange={(e) => setProvince(e.target.value)}>
+                <option value="">Sin especificar</option>
+                {AR_PROVINCES.map((pr) => (
+                  <option key={pr} value={pr}>
+                    {pr}
+                  </option>
+                ))}
+              </SelectInput>
+            )}
           </Field>
         </div>
       </section>

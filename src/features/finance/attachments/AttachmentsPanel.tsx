@@ -58,7 +58,7 @@ export function AttachmentsPanel({ ws, entity, entityId, compact }: { ws: Worksp
 
   return (
     <div className="flex flex-col gap-[8px]">
-      {!compact && <p className="text-[12px] leading-[1.45] text-muted">Los archivos se guardan solo en este navegador: no es almacenamiento compartido ni respaldo en la nube. PDF, JPG, PNG o WEBP de hasta 5 MB.</p>}
+      {!compact && <p className="text-[12px] leading-[1.45] text-muted">Los archivos se guardan solo en este navegador: no es almacenamiento compartido ni respaldo en la nube. PDF, JPG, PNG, WEBP o XLSX de hasta 5 MB.</p>}
       {items.length > 0 && (
         <ul className="flex flex-col gap-[4px]">
           {items.map((a) => (

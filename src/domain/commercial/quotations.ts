@@ -1,6 +1,6 @@
 import { COMMERCIAL_AUTHORIZERS } from '@/config/commercial'
 import { getServiceType } from '@/config/serviceCatalog'
-import type { CurrencyCode, PriceUnit, Quotation, QuotationLine, QuotationStatus } from '@/types/domain'
+import type { CurrencyCode, PriceUnit, Quotation, QuotationLine, QuotationParty, QuotationStatus } from '@/types/domain'
 import { logActivity } from '../activity'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
@@ -10,10 +10,21 @@ import { DomainError, isIsoDate } from '../errors'
 import { mulMoney } from '../finance/money'
 import { addAmount, round2, type Amounts } from './money'
 import { resolvePrice } from './pricing'
+import { basePrice, regularItems, specialItemsOf } from './catalog'
+import { specialLine } from './specialItems'
 
 /** Sent quotations past their validity are expired (derived, no write needed). */
 export function effectiveStatus(q: Pick<Quotation, 'status' | 'validUntil'>, today: string): QuotationStatus {
   return q.status === 'sent' && q.validUntil < today ? 'expired' : q.status
+}
+
+/** Display stage: drafts frozen for sending are "ready"; replaced approvals are "superseded". */
+export type QuotationStage = QuotationStatus | 'ready' | 'superseded'
+
+export function quotationStage(q: Pick<Quotation, 'status' | 'validUntil' | 'preparedAt' | 'supersededById'>, today: string): QuotationStage {
+  if (q.supersededById) return 'superseded'
+  if (q.status === 'draft' && q.preparedAt) return 'ready'
+  return effectiveStatus(q, today)
 }
 
 export const lineTotal = (l: Pick<QuotationLine, 'quantity' | 'unitPrice'>) => mulMoney(l.unitPrice, l.quantity)
@@ -49,21 +60,27 @@ export function createQuotationFromProject(ds: Dataset, projectId: string, ctx: 
   if (services.length === 0) throw new DomainError('El proyecto no tiene servicios para cotizar.')
 
   const today = ctx.today()
-  const lines: QuotationLine[] = services.map((s) => {
+  const lines: QuotationLine[] = services.flatMap((s): QuotationLine[] => {
     const type = getServiceType(s.typeId)
+    // Phase 5.0B: project-specific special items get their own fixed lines (never inside the main line).
+    const special: QuotationLine[] = specialItemsOf(s).map((i) => ({ id: ctx.newId('ql'), serviceId: s.id, serviceTypeId: s.typeId, currency: project.currency, priceSource: 'special' as const, ...specialLine(s, i) }))
+    if (special.length && !regularItems(s).length && basePrice(s) === undefined) return special
     const quantity = 1
     const res = resolvePrice(ds, { clientId: client.id, serviceTypeId: s.typeId, market: project.destination.country, currency: project.currency, date: today, quantity })
-    const base = { id: ctx.newId('ql'), serviceId: s.id, serviceTypeId: s.typeId, description: `${type.label} — ${project.destination.city}`, quantity, currency: project.currency }
+    const base = { id: ctx.newId('ql'), serviceId: s.id, serviceTypeId: s.typeId, description: `${type.label} — ${project.destination.city}`, details: s.description, quantity, currency: project.currency }
     if (res.status === 'unique') {
-      return { ...base, unit: res.entry.unit, unitPrice: res.entry.unitPrice, priceSource: 'price-list' as const, priceEntryId: res.entry.id, suggestedUnitPrice: res.entry.unitPrice }
+      return [{ ...base, unit: res.entry.unit, unitPrice: res.entry.unitPrice, priceSource: 'price-list' as const, priceEntryId: res.entry.id, suggestedUnitPrice: res.entry.unitPrice }, ...special]
     }
-    return {
-      ...base,
-      unit: 'service' as PriceUnit,
-      unitPrice: 0,
-      priceSource: 'manual' as const,
-      notes: res.status === 'ambiguous' ? `Tarifa ambigua: ${res.candidates.length} reglas aplican. Elegí una.` : 'Sin tarifa vigente: ingresá el precio.',
-    }
+    return [
+      {
+        ...base,
+        unit: 'service' as PriceUnit,
+        unitPrice: 0,
+        priceSource: 'manual' as const,
+        notes: res.status === 'ambiguous' ? `Tarifa ambigua: ${res.candidates.length} reglas aplican. Elegí una.` : 'Sin tarifa vigente: ingresá el precio.',
+      },
+      ...special,
+    ]
   })
 
   const quotation: Quotation = {
@@ -97,6 +114,10 @@ export interface QuotationLineInput {
   suggestedUnitPrice?: number
   adjustmentReason?: string
   notes?: string
+  /** Phase 5.0B: service description (scope) shown on the quotation. */
+  details?: string
+  /** Phase 5.0B: special sub-service priced by the line. */
+  serviceItemId?: string
 }
 
 export interface QuotationDraftInput {
@@ -115,6 +136,15 @@ export function validateQuotationDraft(ds: Dataset, quotation: Quotation, input:
   const services = new Set(ds.services.filter((s) => s.projectId === quotation.projectId).map((s) => s.id))
   input.lines.forEach((l, i) => {
     if (l.serviceId && !services.has(l.serviceId)) f[`lines.${i}.serviceId`] = 'El servicio no pertenece al proyecto.'
+    if ((l.details?.length ?? 0) > 600) f[`lines.${i}.details`] = 'Máximo 600 caracteres.'
+    if (l.serviceItemId) {
+      // Special items: price, quantity and currency come from the item, never changed silently here.
+      const item = ds.services.find((s) => s.id === l.serviceId)?.items?.find((x) => x.id === l.serviceItemId && x.special)
+      if (!item) f[`lines.${i}.serviceId`] = 'El subservicio especial no pertenece al servicio.'
+      else if (round2(l.unitPrice) !== item.unitPrice || l.quantity !== item.quantity || l.currency !== (item.currency ?? l.currency))
+        f[`lines.${i}.unitPrice`] = `Precio fijado por el subservicio especial (${item.quantity} × ${item.unitPrice}): modificalo desde el servicio.`
+      return
+    }
     if (!l.description.trim()) f[`lines.${i}.description`] = 'Ingresá una descripción.'
     if (!Number.isFinite(l.quantity) || l.quantity <= 0) f[`lines.${i}.quantity`] = 'Cantidad mayor a cero.'
     if (!Number.isFinite(l.unitPrice) || l.unitPrice < 0) f[`lines.${i}.unitPrice`] = 'Precio inválido.'
@@ -138,11 +168,13 @@ function toLines(input: QuotationLineInput[], ctx: DomainContext): QuotationLine
       unit: l.unit,
       unitPrice: round2(l.unitPrice),
       currency: l.currency,
-      priceSource: l.suggestedUnitPrice === undefined ? 'manual' : adjusted ? 'adjusted' : 'price-list',
+      priceSource: l.serviceItemId ? 'special' : l.suggestedUnitPrice === undefined ? 'manual' : adjusted ? 'adjusted' : 'price-list',
       priceEntryId: l.priceEntryId,
       suggestedUnitPrice: l.suggestedUnitPrice,
       adjustmentReason: adjusted ? l.adjustmentReason?.trim() : undefined,
       notes: l.notes?.trim() || undefined,
+      details: l.details?.trim() || undefined,
+      serviceItemId: l.serviceItemId || undefined,
     }
   })
 }
@@ -157,6 +189,7 @@ function requireQuotation(ds: Dataset, id: string): Quotation {
 export function updateQuotationDraft(ds: Dataset, quotationId: string, input: QuotationDraftInput, ctx: DomainContext): Dataset {
   const q = requireQuotation(ds, quotationId)
   if (q.status !== 'draft') throw new DomainError('Solo se pueden editar borradores. Creá una nueva versión.')
+  if (q.preparedAt) throw new DomainError('La cotización está preparada para envío: volvé a borrador para editarla.')
   const fields = validateQuotationDraft(ds, q, input, ctx.actorId)
   if (Object.keys(fields).length) throw new DomainError('Revisá la cotización.', fields)
   return {
@@ -171,15 +204,70 @@ export function updateQuotationDraft(ds: Dataset, quotationId: string, input: Qu
   }
 }
 
-export function sendQuotation(ds: Dataset, quotationId: string, ctx: DomainContext): Dataset {
+function assertSendable(q: Quotation, today: string, verb: string) {
+  const problems = q.lines.map((l, i) => (l.unitPrice <= 0 ? `línea ${i + 1} sin precio` : '')).filter(Boolean)
+  if (q.lines.length === 0 || problems.length) throw new DomainError(`No se puede ${verb}: ${problems.join(', ') || 'sin líneas'}.`)
+  if (q.validUntil < today) throw new DomainError(`La validez ya venció. Actualizá la fecha antes de ${verb}.`)
+}
+
+/** Recipient data as of now (frozen on the quotation once prepared or sent). */
+export function quotationParty(ds: Dataset, q: Pick<Quotation, 'clientId' | 'projectId'>): QuotationParty {
+  const client = findById(ds.clients, q.clientId)
+  const project = findById(ds.projects, q.projectId)
+  const contact = client?.contacts.find((c) => c.primary) ?? client?.contacts[0]
+  const manager = client ? findById(ds.staff, client.accountManagerId) : undefined
+  const beneficiary = project ? findById(ds.people, project.beneficiaryId) : undefined
+  return {
+    clientName: client?.name ?? '',
+    legalName: client?.legalName || undefined,
+    taxId: client?.taxId || undefined,
+    billingAddress: client?.billingAddress || undefined,
+    contact: contact ? { name: contact.name, role: contact.role || undefined, email: contact.email || undefined } : undefined,
+    projectCode: project?.code ?? '',
+    beneficiary: beneficiary?.name,
+    route: project ? `${project.origin.city} → ${project.destination.city}${project.province ? ` (${project.province})` : ''}` : undefined,
+    accountManager: manager ? { name: manager.name, email: manager.email || undefined } : undefined,
+  }
+}
+
+/** Phase 5.0B: freezes a draft for sending (content locked; still editable after "back to draft"). */
+export function markQuotationReady(ds: Dataset, quotationId: string, ctx: DomainContext): Dataset {
+  const q = requireQuotation(ds, quotationId)
+  if (q.status !== 'draft') throw new DomainError('Solo se preparan borradores.')
+  if (q.preparedAt) return ds
+  assertSendable(q, ctx.today(), 'preparar')
+  const next: Dataset = { ...ds, quotations: replaceById(ds.quotations, quotationId, (x) => ({ ...x, preparedAt: ctx.now(), preparedBy: ctx.actorId, issuedTo: quotationParty(ds, x) })) }
+  return logActivity(next, { projectId: q.projectId, kind: 'commercial', message: `Cotización ${q.number} v${q.version} preparada para envío.` }, ctx)
+}
+
+export function reopenQuotationDraft(ds: Dataset, quotationId: string, ctx: DomainContext): Dataset {
+  const q = requireQuotation(ds, quotationId)
+  if (q.status !== 'draft' || !q.preparedAt) throw new DomainError('La cotización no está preparada para envío.')
+  const next: Dataset = { ...ds, quotations: replaceById(ds.quotations, quotationId, (x) => ({ ...x, preparedAt: undefined, preparedBy: undefined, issuedTo: undefined })) }
+  return logActivity(next, { projectId: q.projectId, kind: 'commercial', message: `Cotización ${q.number} v${q.version} vuelve a borrador.` }, ctx)
+}
+
+export interface SendInput {
+  /** Date it was actually sent (manual record); defaults to today. */
+  sentAt?: string
+  reference?: string
+}
+
+/** Records that the quotation was sent (SIGR does not send it). Content becomes immutable. */
+export function sendQuotation(ds: Dataset, quotationId: string, ctx: DomainContext, input: SendInput = {}): Dataset {
   const q = requireQuotation(ds, quotationId)
   if (q.status !== 'draft') throw new DomainError('Solo se envían borradores.')
-  const problems = q.lines.map((l, i) => (l.unitPrice <= 0 ? `línea ${i + 1} sin precio` : '')).filter(Boolean)
-  if (q.lines.length === 0 || problems.length) throw new DomainError(`No se puede enviar: ${problems.join(', ') || 'sin líneas'}.`)
-  if (q.validUntil < ctx.today()) throw new DomainError('La validez ya venció. Actualizá la fecha antes de enviar.')
-  let next: Dataset = { ...ds, quotations: replaceById(ds.quotations, quotationId, (x) => ({ ...x, status: 'sent', sentAt: ctx.today() })) }
+  const sentAt = input.sentAt || ctx.today()
+  if (!isIsoDate(sentAt)) throw new DomainError('Revisá la fecha de envío.', { sentAt: 'Fecha inválida.' })
+  if (sentAt > ctx.today()) throw new DomainError('Revisá la fecha de envío.', { sentAt: 'No puede ser una fecha futura.' })
+  if (sentAt < q.issueDate) throw new DomainError('Revisá la fecha de envío.', { sentAt: 'No puede ser anterior a la emisión.' })
+  assertSendable(q, sentAt, 'enviar')
+  let next: Dataset = {
+    ...ds,
+    quotations: replaceById(ds.quotations, quotationId, (x) => ({ ...x, status: 'sent', sentAt, sentRef: input.reference?.trim() || undefined, issuedTo: x.issuedTo ?? quotationParty(ds, x) })),
+  }
   next = { ...next, projects: replaceById(next.projects, q.projectId, (p) => (p.financialStatus === 'to-quote' ? { ...p, financialStatus: 'quoted' } : p)) }
-  return logActivity(next, { projectId: q.projectId, kind: 'commercial', message: `Cotización ${q.number} v${q.version} enviada al cliente.` }, ctx)
+  return logActivity(next, { projectId: q.projectId, kind: 'commercial', message: `Cotización ${q.number} v${q.version} enviada al cliente${input.reference?.trim() ? ` (ref. ${input.reference.trim()})` : ''}.` }, ctx)
 }
 
 /** Approved amount per service and currency from approved, non-superseded versions. */
@@ -195,6 +283,8 @@ export function approvedAmountsByService(ds: Pick<Dataset, 'quotations'>, projec
 export interface ApprovalInput {
   approvedBy: string
   approvedAt: string
+  /** Phase 5.0B: reference of the client's acceptance (email, signed copy…). */
+  approvalRef?: string
 }
 
 /**
@@ -212,6 +302,7 @@ export function approveQuotation(ds: Dataset, quotationId: string, input: Approv
   if (!input.approvedBy.trim()) f.approvedBy = 'Indicá quién aprobó del lado del cliente.'
   if (!isIsoDate(input.approvedAt)) f.approvedAt = 'Fecha inválida.'
   else if (input.approvedAt > ctx.today()) f.approvedAt = 'No puede ser una fecha futura.'
+  else if (q.sentAt && input.approvedAt < q.sentAt) f.approvedAt = 'No puede ser anterior al envío.'
   if (Object.keys(f).length) throw new DomainError('Revisá los datos de aprobación.', f)
 
   const previous = ds.quotations.filter((x) => x.number === q.number && x.status === 'approved' && !x.supersededById && x.id !== q.id)
@@ -234,7 +325,7 @@ export function approveQuotation(ds: Dataset, quotationId: string, input: Approv
   let next: Dataset = {
     ...ds,
     quotations: ds.quotations.map((x) => {
-      if (x.id === q.id) return { ...x, status: 'approved' as const, approvedAt: input.approvedAt, approvedBy: input.approvedBy.trim() }
+      if (x.id === q.id) return { ...x, status: 'approved' as const, approvedAt: input.approvedAt, approvedBy: input.approvedBy.trim(), approvalRef: input.approvalRef?.trim() || undefined }
       if (previous.includes(x)) return { ...x, supersededById: q.id }
       return x
     }),

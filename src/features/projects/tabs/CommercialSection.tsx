@@ -1,9 +1,9 @@
-import { BadgeCheck, CircleDashed, FileSignature, Hourglass, Plus, ReceiptText, ShieldCheck } from 'lucide-react'
+import { BadgeCheck, CircleDashed, FileSignature, FileUp, GitCompare, Hourglass, Plus, ReceiptText, ShieldCheck } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useToast } from '@/components/feedback/useToast'
 import { AmountsText } from '@/components/ui/Amounts'
-import { Button } from '@/components/ui/Button'
+import { Button, ButtonLink } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
 import { DataTable } from '@/components/ui/DataTable'
 import { EmptyState } from '@/components/ui/EmptyState'
@@ -14,12 +14,13 @@ import { StatTile } from '@/components/ui/StatTile'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
 import { billingMilestoneLabel, commercialStageMeta } from '@/config/commercial'
-import { clientPath, invoicePath, purchaseOrderPath, quotationPath } from '@/config/navigation'
+import { clientPath, invoicePath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { getServiceType } from '@/config/serviceCatalog'
 import { hasAmount, sumAmounts, type Amounts } from '@/domain/commercial/money'
 import { projectCommercial, type ServiceCommercial } from '@/domain/commercial/traceability'
 import { DomainError } from '@/domain/errors'
 import { effectivePolicy } from '@/domain/commercial/catalog'
+import { comparePoWithQuotation } from '@/domain/commercial/poComparison'
 import { poModeLabel } from '@/features/catalog/meta'
 import { ServiceItemsModal } from '@/features/catalog/ServiceItemsModal'
 import { ExceptionModal } from '@/features/catalog/ExceptionModal'
@@ -151,7 +152,7 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{getServiceType(s.typeId).label}</span>
                     {s.items?.length ? (
-                      <span className="block whitespace-normal text-[12px] leading-[1.35] text-muted">{s.items.map((i) => `${i.name} ×${i.quantity}`).join(' · ')}</span>
+                      <span className="block whitespace-normal text-[12px] leading-[1.35] text-muted">{s.items.map((i) => `${i.name} ×${i.quantity}${i.special ? ' (especial)' : ''}`).join(' · ')}</span>
                     ) : null}
                     {ws.catalogItems.some((c) => c.serviceTypeId === s.typeId) && (
                       <button type="button" onClick={() => setEditingItems(s)} className="text-[12px] font-medium text-ink-secondary underline-offset-2 hover:underline">
@@ -272,10 +273,24 @@ export function CommercialSection({ ctx }: { ctx: ProjectContext }) {
           description={policy?.requiresPurchaseOrder ? 'Un proyecto puede tener varias OC; cada una puede autorizar varios servicios.' : 'Este cliente no exige OC; podés registrarlas igual si las emite.'}
           action={
             hasApproved || (policy && !policy.requiresApprovedQuote) ? (
-              <Button size="sm" variant="outline" onClick={() => setCreatingPo(true)}>
-                <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
-                Registrar OC
-              </Button>
+              <span className="flex flex-wrap gap-[8px]">
+                {comparePoWithQuotation(ws.dataset, project.id).applicable && (
+                  <ButtonLink size="sm" variant="outline" to={`${projectPath(project.id)}/comparacion-oc`}>
+                    <GitCompare aria-hidden className="size-[15px]" strokeWidth={1.9} />
+                    Comparar con cotización
+                  </ButtonLink>
+                )}
+                {effectivePolicy(client, project).poMode !== 'open' && (
+                  <ButtonLink size="sm" variant="outline" to={`${projectPath(project.id)}/importar-oc`}>
+                    <FileUp aria-hidden className="size-[15px]" strokeWidth={1.9} />
+                    Importar OC
+                  </ButtonLink>
+                )}
+                <Button size="sm" variant="outline" onClick={() => setCreatingPo(true)}>
+                  <Plus aria-hidden className="size-[15px]" strokeWidth={2} />
+                  Registrar OC
+                </Button>
+              </span>
             ) : (
               <Button size="sm" variant="secondary" disabled title="Primero aprobá una cotización">
                 Requiere cotización aprobada

@@ -230,7 +230,7 @@ describe('grouped settlement', () => {
     const storage: StorageLike = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => void (mem[k] = v), removeItem: (k) => void delete mem[k] }
     const { dataset, issue } = readDataset(storage)
     expect(issue).toBe('migrated')
-    expect(dataset!.schemaVersion).toBe(10)
+    expect(dataset!.schemaVersion).toBe(15)
     expect(dataset!.settlementBatches).toEqual([])
     expect(dataset!.settlements).toEqual(v9.settlements)
     expect(dataset!.supplierPayments).toEqual(v9.supplierPayments)
@@ -249,7 +249,7 @@ describe('v9 → v10 migration', () => {
     const mem: Record<string, string> = { 'sigr.demo.dataset': JSON.stringify({ schemaVersion: 9, savedAt: 'x', data: v9 }) }
     const storage: StorageLike = { getItem: (k) => mem[k] ?? null, setItem: (k, v) => void (mem[k] = v), removeItem: (k) => void delete mem[k] }
     const out = readDataset(storage).dataset!
-    expect(out.schemaVersion).toBe(10)
+    expect(out.schemaVersion).toBe(15)
     const [confirmed, draft] = out.settlementBatches
     expect(confirmed).toMatchObject({ allocationMode: 'ordered', compensation: [{ amount: 300 }] })
     expect(draft.allocationMode).toBe('pro-rata')

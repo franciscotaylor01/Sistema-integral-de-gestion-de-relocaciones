@@ -7,7 +7,7 @@ import type { Workspace } from '@/hooks/useWorkspace'
 import { formatMoney } from '@/lib/format'
 import type { ProjectRecord, ServiceItem } from '@/types/domain'
 
-const sourceLabel: Record<ServiceItem['source'], string> = { 'open-order': 'OC abierta', tariff: 'Tarifario', manual: 'Manual' }
+const sourceLabel: Record<ServiceItem['source'], string> = { 'open-order': 'OC abierta', tariff: 'Tarifario', manual: 'Manual', special: 'Especial del proyecto' }
 
 /**
  * Pick the sub-services contracted for one service, with quantities. Prices come
@@ -69,7 +69,7 @@ export function ServiceItemsEditor({
               <span className="min-w-0">
                 <span className="block truncate font-medium">{ci.name}</span>
                 <span className="block truncate text-[12px] text-muted">
-                  {blocked ? 'No autorizado por la OC abierta' : price ? `${sourceLabel[price.source]}${prev ? ' · precio histórico' : ''}` : 'Sin precio: ingresalo'} · {priceUnitLabel[price?.unit ?? ci.unit].toLowerCase()}
+                  {blocked ? 'No autorizado por la OC abierta' : price ? `${sourceLabel[price.source]}${prev ? ' · precio histórico' : ''}` : 'Pendiente de configurar en el tarifario · podés cargar un precio manual'} · {priceUnitLabel[price?.unit ?? ci.unit].toLowerCase()}
                 </span>
                 {err && <span className="block text-[12px] font-medium text-danger">{err}</span>}
               </span>

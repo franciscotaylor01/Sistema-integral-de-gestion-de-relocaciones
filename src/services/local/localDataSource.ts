@@ -13,6 +13,8 @@ import {
   discardQuotationDraft,
   rejectQuotation,
   sendQuotation,
+  markQuotationReady,
+  reopenQuotationDraft,
   updateQuotationDraft,
 } from '@/domain/commercial/quotations'
 import { recordCost, voidCost, markOverheadPaid } from '@/domain/finance/costs'
@@ -20,6 +22,13 @@ import { correctExchangeRate, recordExchangeRate } from '@/domain/finance/fx'
 import { createCatalogItem, createOpenOrder, setOfferedServices, setOpenOrderStatus, setProjectException, updateCatalogItem } from '@/domain/commercial/catalog'
 import { approveCertificate, createCertificate, rejectCertificate, submitCertificate } from '@/domain/commercial/certificates'
 import { approvePriceEntry } from '@/domain/commercial/pricing'
+import { registerQuotationSent, registerTariffSent } from '@/domain/commercial/documents'
+import { confirmPoImport } from '@/domain/commercial/poImport'
+import { reviewComparisonRow } from '@/domain/commercial/poComparison'
+import { createTemplate, discardInitialDocument, registerInitialDocReceived, registerInitialDocsSent, replaceTemplateFile, requestInitialDocCorrection, requestInitialDocuments, updateTemplate } from '@/domain/initialDocuments'
+import { addSpecialItem, approveSpecialItem, removeSpecialItem, setServiceDescription, updateSpecialItem } from '@/domain/commercial/specialItems'
+import { saveTariffGrid } from '@/domain/commercial/tariffGrid'
+import { applyTariffImport } from '@/domain/commercial/tariffImport'
 import { changeInvoiceDueDate, confirmInvoiceEmission, correctFiscalData, recordFiscalData } from '@/domain/finance/emission'
 import { addAttachment } from '@/domain/finance/attachments'
 import { addSettlementAdjustment, configureSettlement, confirmSettlement, createSettlement, linkSettlementObligation, recordSettlementRelease, unlinkSettlementObligation, addFiscalAdjustment } from '@/domain/finance/settlements'
@@ -143,7 +152,21 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
         return { ds: r.ds, quotationId: r.quotation.id }
       }),
     updateQuotationDraft: (id, input) => simple((ds) => updateQuotationDraft(ds, id, input, ctx)),
-    sendQuotation: (id) => simple((ds) => sendQuotation(ds, id, ctx)),
+    sendQuotation: (id, input) => simple((ds) => sendQuotation(ds, id, ctx, input)),
+    markQuotationReady: (id) => simple((ds) => markQuotationReady(ds, id, ctx)),
+    reopenQuotationDraft: (id) => simple((ds) => reopenQuotationDraft(ds, id, ctx)),
+    registerQuotationSent: (id, input, requestId) => run((ds) => registerQuotationSent(ds, id, input, requestId, ctx)),
+    registerTariffSent: (clientId, input, requestId) => run((ds) => registerTariffSent(ds, clientId, input, requestId, ctx)),
+    createTemplate: (input, file, requestId) => run((ds) => createTemplate(ds, input, file, requestId, ctx)),
+    updateTemplate: (id, input) => simple((ds) => updateTemplate(ds, id, input, ctx)),
+    replaceTemplateFile: (id, file) => simple((ds) => replaceTemplateFile(ds, id, file, ctx)),
+    requestInitialDocuments: (projectId, ids) => simple((ds) => requestInitialDocuments(ds, projectId, ids, ctx)),
+    discardInitialDocument: (id) => simple((ds) => discardInitialDocument(ds, id, ctx)),
+    registerInitialDocsSent: (projectId, ids, input, requestId) => run((ds) => registerInitialDocsSent(ds, projectId, ids, input, requestId, ctx)),
+    registerInitialDocReceived: (id, input) => simple((ds) => registerInitialDocReceived(ds, id, input, ctx)),
+    requestInitialDocCorrection: (id, note) => simple((ds) => requestInitialDocCorrection(ds, id, note, ctx)),
+    confirmPoImport: (input, requestId) => run((ds) => confirmPoImport(ds, input, requestId, ctx)),
+    reviewComparisonRow: (projectId, key, input) => simple((ds) => reviewComparisonRow(ds, projectId, key, input, ctx)),
     approveQuotation: (id, input) => simple((ds) => approveQuotation(ds, id, input, ctx)),
     rejectQuotation: (id, reason) => simple((ds) => rejectQuotation(ds, id, reason, ctx)),
     createQuotationVersion: (id) =>
@@ -194,9 +217,16 @@ export function createLocalDataSource(options: { storage?: StorageLike; latency?
     updateCatalogItem: (id, input) => simple((ds) => updateCatalogItem(ds, id, input, ctx)),
     setOfferedServices: (clientId, typeIds) => simple((ds) => setOfferedServices(ds, clientId, typeIds, ctx)),
     approvePriceEntry: (id, ref) => simple((ds) => approvePriceEntry(ds, id, ref, ctx)),
+    saveTariffGrid: (clientId, input) => simple((ds) => saveTariffGrid(ds, clientId, input, ctx)),
+    applyTariffImport: (clientId, input, requestId) => run((ds) => applyTariffImport(ds, clientId, input, requestId, ctx)),
     createOpenOrder: (input, requestId) => run((ds) => createOpenOrder(ds, input, requestId, ctx)),
     setOpenOrderStatus: (id, status) => simple((ds) => setOpenOrderStatus(ds, id, status, ctx)),
     updateServiceItems: (id, items) => simple((ds) => updateServiceItems(ds, id, items, ctx)),
+    setServiceDescription: (id, text) => simple((ds) => setServiceDescription(ds, id, text, ctx)),
+    addSpecialItem: (id, input) => run((ds) => addSpecialItem(ds, id, input, ctx)),
+    updateSpecialItem: (id, itemId, input) => simple((ds) => updateSpecialItem(ds, id, itemId, input, ctx)),
+    approveSpecialItem: (id, itemId, ref) => simple((ds) => approveSpecialItem(ds, id, itemId, ref, ctx)),
+    removeSpecialItem: (id, itemId) => simple((ds) => removeSpecialItem(ds, id, itemId, ctx)),
     createCertificate: (input, requestId) => run((ds) => createCertificate(ds, input, requestId, ctx)),
     submitCertificate: (id, input) => simple((ds) => submitCertificate(ds, id, input, ctx)),
     approveCertificate: (id, input) => simple((ds) => approveCertificate(ds, id, input, ctx)),

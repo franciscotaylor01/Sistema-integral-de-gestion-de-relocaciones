@@ -239,7 +239,7 @@ function InvoiceView({ invoice: inv, workspace: ws }: { invoice: Invoice; worksp
 
         {isDraft && (
           <div className="min-w-0 xl:col-span-2">
-            <PrepareInvoiceCard ws={ws} inv={inv} />
+            <PrepareInvoiceCard ws={ws} inv={inv} onConfirm={() => setEmission('confirm')} />
           </div>
         )}
         <div className="flex flex-col gap-[24px] xl:col-start-3 xl:row-span-2 xl:row-start-1">

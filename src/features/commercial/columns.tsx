@@ -3,10 +3,10 @@ import { AmountsText } from '@/components/ui/Amounts'
 import type { Column } from '@/components/ui/DataTable'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { DEMO_TODAY } from '@/config/brand'
-import { purchaseOrderStatusMeta, quotationStatusMeta } from '@/config/commercial'
+import { purchaseOrderStatusMeta, quotationStageMeta } from '@/config/commercial'
 import { clientPath, projectPath, purchaseOrderPath, quotationPath } from '@/config/navigation'
 import { allocatedTotal } from '@/domain/commercial/purchaseOrders'
-import { effectiveStatus, quotationTotals } from '@/domain/commercial/quotations'
+import { effectiveStatus, quotationStage, quotationTotals } from '@/domain/commercial/quotations'
 import type { Workspace } from '@/hooks/useWorkspace'
 import { cn } from '@/lib/cn'
 import { daysUntil, formatDate, formatRelativeDays } from '@/lib/dates'
@@ -72,7 +72,7 @@ export function quotationColumns(ws: Workspace, opts: { withProject?: boolean; w
       width: '150px',
       cell: (q) => (
         <span className="block">
-          <StatusBadge meta={quotationStatusMeta[effectiveStatus(q, DEMO_TODAY)]} />
+          <StatusBadge meta={quotationStageMeta[quotationStage(q, DEMO_TODAY)]} />
           {q.supersededById && <span className="block text-[12px] text-muted">Reemplazada</span>}
         </span>
       ),

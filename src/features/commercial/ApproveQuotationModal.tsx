@@ -30,12 +30,13 @@ function ApproveForm({ onClose, quotation, defaultApprover }: Omit<Props, 'open'
   const { run, busy, errors, formError } = useCommand()
   const [approvedBy, setApprovedBy] = useState(defaultApprover)
   const [approvedAt, setApprovedAt] = useState(DEMO_TODAY)
+  const [approvalRef, setApprovalRef] = useState('')
 
   return (
     <form
       onSubmit={async (e) => {
         e.preventDefault()
-        const ok = await run(() => actions.approveQuotation(quotation.id, { approvedBy, approvedAt }), {
+        const ok = await run(() => actions.approveQuotation(quotation.id, { approvedBy, approvedAt, approvalRef }), {
           title: 'Cotización aprobada',
           description: 'Los precios quedaron congelados en esta versión.',
         })
@@ -52,7 +53,10 @@ function ApproveForm({ onClose, quotation, defaultApprover }: Omit<Props, 'open'
         {(p) => <TextInput {...p} data-autofocus value={approvedBy} onChange={(e) => setApprovedBy(e.target.value)} maxLength={120} />}
       </Field>
       <Field label="Fecha de aprobación" required error={errors.approvedAt}>
-        {(p) => <DateInput {...p} value={approvedAt} max={DEMO_TODAY} onChange={(e) => setApprovedAt(e.target.value)} />}
+        {(p) => <DateInput {...p} value={approvedAt} min={quotation.sentAt} max={DEMO_TODAY} onChange={(e) => setApprovedAt(e.target.value)} />}
+      </Field>
+      <Field label="Referencia de aprobación" error={errors.approvalRef} hint="Email de aceptación, copia firmada, número en el portal del cliente…">
+        {(p) => <TextInput {...p} value={approvalRef} onChange={(e) => setApprovalRef(e.target.value)} maxLength={200} />}
       </Field>
       <div className="flex justify-end gap-[10px] border-t border-line pt-[14px]">
         <Button variant="secondary" size="sm" onClick={onClose} disabled={busy}>

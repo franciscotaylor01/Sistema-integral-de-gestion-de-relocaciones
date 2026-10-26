@@ -19,6 +19,12 @@ import type {
   Certificate,
   Attachment,
   SettlementBatch,
+  TariffImport,
+  CommercialCommunication,
+  DocumentTemplate,
+  InitialDocument,
+  PoImportRecord,
+  PoComparisonReview,
   Invoice,
   LegalEntity,
   SupplierAgreement,
@@ -67,6 +73,12 @@ export interface Workspace {
   certificates: Certificate[]
   attachments: Attachment[]
   settlementBatches: SettlementBatch[]
+  tariffImports: TariffImport[]
+  communications: CommercialCommunication[]
+  documentTemplates: DocumentTemplate[]
+  initialDocuments: InitialDocument[]
+  poImports: PoImportRecord[]
+  poReviews: PoComparisonReview[]
   audit: AuditEvent[]
   /** Derived financial views (as of the demo "today"). */
   invoiceFin: Map<string, InvoiceFinancials>
@@ -142,6 +154,12 @@ export function deriveWorkspace(ds: Dataset): Workspace {
     certificates: ds.certificates,
     attachments: ds.attachments,
     settlementBatches: ds.settlementBatches,
+    tariffImports: ds.tariffImports,
+    communications: ds.communications,
+    documentTemplates: ds.documentTemplates,
+    initialDocuments: ds.initialDocuments,
+    poImports: ds.poImports,
+    poReviews: ds.poReviews,
     audit: ds.audit,
     invoiceFin: new Map(ds.invoices.map((i) => [i.id, invoiceFinancials(ds, i, DEMO_TODAY)])),
     obligationFin: new Map(ds.obligations.map((o) => [o.id, obligationFinancials(ds, o, DEMO_TODAY)])),

@@ -88,6 +88,7 @@ export function ProjectDetailPage() {
               <span aria-hidden className="text-subtle">→</span>
               <Flag country={project.destination.country} className="size-[17px]" />
               {project.destination.city}, {countryNames[project.destination.country]}
+              {project.province && <span className="text-ink-secondary">· {project.province}</span>}
             </span>
             <span aria-hidden className="h-[13px] w-px bg-line-strong" />
             <span>{relocationKindLabel[project.category]}</span>
@@ -148,7 +149,7 @@ export function ProjectDetailPage() {
             { value: 'servicios', label: 'Servicios', count: project.services.length },
             { value: 'operaciones', label: 'Operaciones' },
             { value: 'finanzas', label: 'Finanzas' },
-            { value: 'documentos', label: 'Documentos', count: ctx.documents.length },
+            { value: 'documentos', label: 'Documentos', count: ctx.documents.length + ctx.workspace.initialDocuments.filter((d) => d.projectId === project.id).length },
             { value: 'actividad', label: 'Actividad', count: ctx.activity.length },
           ]}
         />

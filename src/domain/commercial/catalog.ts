@@ -1,12 +1,12 @@
 import { getServiceType } from '@/config/serviceCatalog'
 import type { PaymentTerms } from '@/types/domain'
 import { validTerms } from '../finance/terms'
-import type { CatalogItem, Client, CommercialPolicy, CurrencyCode, OpenOrderItem, OpenOrderStatus, OpenPurchaseOrder, PoMode, PriceUnit, ProjectRecord, ServiceItem } from '@/types/domain'
+import type { CatalogItem, Client, CommercialPolicy, CurrencyCode, OpenOrderItem, OpenOrderStatus, OpenPurchaseOrder, PoMode, PriceUnit, ProjectRecord, ServiceItem, ServiceRecord } from '@/types/domain'
 import { findById, replaceById } from '../collections'
 import type { DomainContext } from '../context'
 import type { Dataset } from '../dataset'
 import { DomainError, isIsoDate } from '../errors'
-import { isMoney, isQuantity, mulMoney, addMoney } from '../finance/money'
+import { isMoney, isQuantity, mulMoney, addMoney, subMoney } from '../finance/money'
 import { logActivityGlobal } from './activity'
 import { resolvePrice } from './pricing'
 
@@ -216,7 +216,7 @@ export function buildServiceItems(ds: Dataset, project: ProjectRecord, typeId: s
   return items.map((it) => {
     const prev = keep.find((k) => k.catalogItemId === it.catalogItemId)
     const ci = findById(ds.catalogItems, it.catalogItemId)!
-    if (prev) return { ...prev, quantity: it.quantity }
+    if (prev) return { ...prev, quantity: it.quantity, currency: prev.currency ?? project.currency }
     const price = resolveItemPrice(ds, project, typeId, it.catalogItemId, date)
     return {
       id: ctx.newId('sit'),
@@ -225,14 +225,30 @@ export function buildServiceItems(ds: Dataset, project: ProjectRecord, typeId: s
       unit: price?.unit ?? ci.unit,
       quantity: it.quantity,
       unitPrice: price?.unitPrice ?? Math.round((it.unitPrice ?? 0) * 100) / 100,
+      currency: project.currency,
       source: price?.source ?? 'manual',
       sourceRef: price?.sourceRef,
     }
   })
 }
 
-export const itemsTotal = (items: ServiceItem[]) => addMoney(...items.map((i) => mulMoney(i.unitPrice, i.quantity)))
+export const itemsTotal = (items: Pick<ServiceItem, 'unitPrice' | 'quantity'>[]) => addMoney(...items.map((i) => mulMoney(i.unitPrice, i.quantity)))
 export const itemSubtotal = (i: Pick<ServiceItem, 'unitPrice' | 'quantity'>) => mulMoney(i.unitPrice, i.quantity)
+
+/** Phase 5.0B: project-only special sub-services live next to catalog items in `service.items`. */
+export const isSpecialItem = (i: Pick<ServiceItem, 'source'>) => i.source === 'special'
+export const regularItems = (s: Pick<ServiceRecord, 'items'>) => (s.items ?? []).filter((i) => !isSpecialItem(i))
+export const specialItemsOf = (s: Pick<ServiceRecord, 'items'>) => (s.items ?? []).filter(isSpecialItem)
+
+/** Service price without its special sub-services: catalog items total, or the flat agreed price. */
+export function basePrice(s: Pick<ServiceRecord, 'price' | 'items'>): number | undefined {
+  const regular = regularItems(s)
+  if (regular.length) return itemsTotal(regular)
+  const special = specialItemsOf(s)
+  if (!special.length) return s.price
+  const base = subMoney(s.price ?? 0, itemsTotal(special))
+  return base > 0 ? base : undefined
+}
 
 /** Sets or removes an explicit project exception to the client policy (the client policy is untouched). */
 export function setProjectException(ds: Dataset, projectId: string, exception: ProjectRecord['commercialException'] | null, ctx: DomainContext): Dataset {

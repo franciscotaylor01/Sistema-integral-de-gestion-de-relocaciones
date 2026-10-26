@@ -11,12 +11,14 @@ import { appendAudit } from './audit'
  * reference and must never claim that a file was saved.
  */
 
+export const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 export const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 export const ATTACHMENT_TYPES: Record<string, string> = {
   'application/pdf': 'PDF',
   'image/jpeg': 'JPG',
   'image/png': 'PNG',
   'image/webp': 'WEBP',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
 }
 
 export interface AttachmentInput {
@@ -32,7 +34,7 @@ export interface AttachmentInput {
 
 /** File rules shared by the UI (before storing the blob) and the domain. */
 export function validateFile(mime: string | undefined, size: number | undefined): string | undefined {
-  if (!mime || !ATTACHMENT_TYPES[mime]) return 'Formato no admitido: solo PDF, JPG, PNG o WEBP.'
+  if (!mime || !ATTACHMENT_TYPES[mime]) return 'Formato no admitido: solo PDF, JPG, PNG, WEBP o XLSX.'
   if (!size || size <= 0) return 'El archivo está vacío.'
   if (size > ATTACHMENT_MAX_BYTES) return 'El archivo supera 5 MB.'
   return undefined
@@ -41,6 +43,10 @@ export function validateFile(mime: string | undefined, size: number | undefined)
 function entityExists(ds: Dataset, entity: AttachmentEntity, id: string): boolean {
   if (entity === 'invoice') return Boolean(findById(ds.invoices, id))
   if (entity === 'receipt') return Boolean(findById(ds.receipts, id))
+  if (entity === 'tariff-import') return ds.clients.some((c) => c.id === id)
+  if (entity === 'document-template') return ds.documentTemplates.some((t) => t.id === id)
+  if (entity === 'initial-document') return ds.initialDocuments.some((d) => d.id === id)
+  if (entity === 'purchase-order') return ds.purchaseOrders.some((p) => p.id === id)
   return ds.receipts.some((r) => r.withholdings?.some((w) => w.id === id))
 }
 
@@ -65,6 +71,6 @@ export function addAttachment(ds: Dataset, input: AttachmentInput, ctx: DomainCo
     createdAt: businessStamp(ctx),
     createdBy: ctx.actorId,
   }
-  const next = appendAudit({ ...ds, attachments: [...ds.attachments, att] }, { entity: input.entity === 'invoice' ? 'invoice' : 'receipt', entityId: input.entityId, action: 'attach', detail: `${att.name} (${att.storage === 'indexeddb' ? 'archivo local' : 'referencia'})` }, ctx)
+  const next = appendAudit({ ...ds, attachments: [...ds.attachments, att] }, { entity: input.entity === 'invoice' || input.entity === 'tariff-import' || input.entity === 'document-template' || input.entity === 'initial-document' || input.entity === 'purchase-order' ? input.entity : 'receipt', entityId: input.entityId, action: 'attach', detail: `${att.name} (${att.storage === 'indexeddb' ? 'archivo local' : 'referencia'})` }, ctx)
   return { ds: next, attachmentId: att.id }
 }

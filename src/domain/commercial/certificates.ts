@@ -8,6 +8,7 @@ import { DomainError, isIsoDate } from '../errors'
 import { nextNumber } from '../finance/numbering'
 import { addMoney, isQuantity, mulMoney } from '../finance/money'
 import { effectivePolicy } from './catalog'
+import { billableUnits } from './specialItems'
 
 /*
  * Client certificates. The certificate itself is generated on the client's
@@ -47,13 +48,13 @@ export function certifiableUnits(ds: Dataset, projectId: string, excludeId?: str
     }
   }
   const out: Certifiable[] = []
+  const project = ds.projects.find((p) => p.id === projectId)
   for (const s of ds.services.filter((x) => x.projectId === projectId)) {
     const label = getServiceType(s.typeId).label
-    const units = s.items?.length
-      ? s.items.map((i) => ({ serviceItemId: i.id, description: `${label} — ${i.name}`, unitPrice: i.unitPrice, contracted: i.quantity }))
-      : s.price
-        ? [{ serviceItemId: undefined, description: label, unitPrice: s.price, contracted: 1 }]
-        : []
+    // Phase 5.0B: special sub-services are certifiable only once approved.
+    const units = project
+      ? billableUnits(ds, project, s).map((u) => ({ serviceItemId: u.serviceItemId, description: u.name ? `${label} — ${u.name}` : label, unitPrice: u.unitPrice, contracted: u.quantity }))
+      : []
     for (const u of units) {
       const key = certKey(s.id, u.serviceItemId)
       const certified = used.get(key) ?? 0

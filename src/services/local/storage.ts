@@ -27,7 +27,7 @@ const COLLECTIONS = [
   'staff', 'clients', 'suppliers', 'people', 'participants', 'projects', 'services', 'procedures',
   'tasks', 'activity', 'documents', 'currencyIndicators', 'alerts',
   'priceEntries', 'quotations', 'purchaseOrders',
-  'legalEntities', 'invoices', 'receipts', 'collectionActions', 'agreements', 'costs', 'obligations', 'supplierPayments', 'exchangeRates', 'audit', 'settlements', 'catalogItems', 'openOrders', 'certificates', 'attachments', 'settlementBatches',
+  'legalEntities', 'invoices', 'receipts', 'collectionActions', 'agreements', 'costs', 'obligations', 'supplierPayments', 'exchangeRates', 'audit', 'settlements', 'catalogItems', 'openOrders', 'certificates', 'attachments', 'settlementBatches', 'tariffImports', 'communications', 'documentTemplates', 'initialDocuments', 'poImports', 'poReviews',
 ] as const
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x)

@@ -30,6 +30,7 @@ import { formatCurrency, formatPercent } from '@/lib/format'
 import { staggerVariants } from '@/lib/motion'
 import type { PoAllocation, PurchaseOrder } from '@/types/domain'
 import { PurchaseOrderModal } from './PurchaseOrderModal'
+import { ImportTrace } from './poImport/ImportTrace'
 
 export function PurchaseOrderPage() {
   const { poId = '' } = useParams()
@@ -182,6 +183,7 @@ function PurchaseOrderView({ po, workspace: ws }: { po: PurchaseOrder; workspace
               </Button>
             )}
           </Card>
+          <ImportTrace po={po} ws={ws} />
         </div>
       </motion.div>
 

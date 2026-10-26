@@ -22,6 +22,7 @@ export const ROUTES = {
   finance: '/finanzas',
   suppliers: '/proveedores',
   settings: '/configuracion',
+  documents: '/documentos',
   help: '/ayuda',
   profile: '/perfil',
 } as const
@@ -70,7 +71,7 @@ export const railNav: ModuleItem[] = [
     label: 'Documentos',
     path: '/documentos',
     icon: FileStack,
-    description: 'Repositorio central de documentación migratoria y contractual con control de vencimientos.',
+    description: 'Plantillas documentales para beneficiarios, vinculadas a los servicios del catálogo.',
   },
   {
     id: 'reports',

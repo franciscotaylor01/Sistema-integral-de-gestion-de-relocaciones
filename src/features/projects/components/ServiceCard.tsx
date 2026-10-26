@@ -26,6 +26,7 @@ import { cn } from '@/lib/cn'
 import { daysUntil, formatDate, formatRelativeDays } from '@/lib/dates'
 import { formatCurrency, formatPercent } from '@/lib/format'
 import type { Project, ProjectDocument, ProjectService } from '@/types/domain'
+import { ServiceScope } from '@/features/catalog/SpecialItems'
 import { ProcedureCard } from './ProcedureCard'
 
 type Section = 'workflow' | 'procedures' | 'tasks' | 'notes'
@@ -108,6 +109,8 @@ export function ServiceCard({ service: s, project, workspace, documents, onEdit,
           )}
         </Fact>
       </dl>
+
+      <ServiceScope service={s} project={project} ws={workspace} />
 
       {issues.length > 0 && (
         <div className="mt-[14px] rounded-[14px] bg-danger-soft px-[14px] py-[11px] text-[13.5px] text-danger">

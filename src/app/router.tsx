@@ -6,7 +6,7 @@ import { SectionPlaceholder } from '@/features/sections/SectionPlaceholder'
 
 /* Anticipated modules: routed now, implemented in later phases. */
 const upcomingModules = [
-  ...railNav.filter((m) => m.path !== ROUTES.dashboard && m.path !== ROUTES.suppliers),
+  ...railNav.filter((m) => m.path !== ROUTES.dashboard && m.path !== ROUTES.suppliers && m.path !== ROUTES.documents),
   settingsModule,
   {
     id: 'help',
@@ -44,6 +44,8 @@ export const router = createBrowserRouter([
         lazy: () => import('@/features/clients/ClientDetailPage').then((m) => ({ Component: m.ClientDetailPage })),
       },
       { path: 'operaciones', lazy: () => import('@/features/operations/OperationsPage').then((m) => ({ Component: m.OperationsPage })) },
+      { path: 'proyectos/:projectId/comparacion-oc', lazy: () => import('@/features/commercial/poImport/ComparisonPage').then((m) => ({ Component: m.ComparisonPage })) },
+      { path: 'proyectos/:projectId/importar-oc', lazy: () => import('@/features/commercial/poImport/ImportPoPage').then((m) => ({ Component: m.ImportPoPage })) },
       { path: 'cotizaciones/:quotationId', lazy: () => import('@/features/commercial/QuotationPage').then((m) => ({ Component: m.QuotationPage })) },
       { path: 'ordenes-compra/:poId', lazy: () => import('@/features/commercial/PurchaseOrderPage').then((m) => ({ Component: m.PurchaseOrderPage })) },
       { path: 'tareas', lazy: () => import('@/features/tasks/TasksPage').then((m) => ({ Component: m.TasksPage })) },
@@ -54,6 +56,7 @@ export const router = createBrowserRouter([
       { path: 'certificados/:certificateId', lazy: () => import('@/features/catalog/Certificates').then((m) => ({ Component: m.CertificatePage })) },
       { path: 'proveedores', lazy: () => import('@/features/suppliers/SuppliersPage').then((m) => ({ Component: m.SuppliersPage })) },
       { path: 'proveedores/:supplierId', lazy: () => import('@/features/suppliers/SupplierPage').then((m) => ({ Component: m.SupplierPage })) },
+      { path: 'documentos', lazy: () => import('@/features/documents/TemplatesPage').then((m) => ({ Component: m.TemplatesPage })) },
       ...upcomingModules,
       { path: '*', element: <NotFoundPage /> },
     ],

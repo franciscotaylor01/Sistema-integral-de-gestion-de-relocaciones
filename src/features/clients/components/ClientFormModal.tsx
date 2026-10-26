@@ -60,6 +60,7 @@ function toInput(c: Client | undefined, defaultManager: string): ClientInput {
     poMode: c?.policy.poMode ?? (c ? (c.policy.requiresPurchaseOrder ? 'project' : 'none') : 'project'),
     requiresCertificate: c?.policy.requiresCertificate ?? false,
     paymentDayType: c?.policy.paymentDayType ?? 'calendar',
+    requiresPriceApproval: c?.policy.requiresPriceApproval ?? false,
     contacts: c?.contacts.map((x) => ({ ...x, primary: Boolean(x.primary) })) ?? [{ name: '', role: '', email: '', phone: '', primary: true }],
     notes: c?.notes ?? '',
   }
@@ -260,6 +261,12 @@ function ClientForm({ onClose, workspace: ws, client }: ClientFormModalProps) {
               </SelectInput>
             )}
           </Field>
+          <Switch
+            checked={Boolean(input.requiresPriceApproval)}
+            onChange={(v) => patch({ requiresPriceApproval: v })}
+            label="Exige aprobación comercial de tarifas"
+            description="Solo se usan precios aprobados; los pendientes no se aplican a proyectos."
+          />
           <Switch
             checked={Boolean(input.requiresCertificate)}
             onChange={(v) => patch({ requiresCertificate: v })}

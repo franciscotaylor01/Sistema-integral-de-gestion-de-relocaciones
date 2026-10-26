@@ -1,5 +1,6 @@
 import type { BillingMilestone, PriceUnit, PurchaseOrderStatus, QuotationStatus } from '@/types/domain'
 import type { CommercialStage } from '@/domain/commercial/traceability'
+import type { QuotationStage } from '@/domain/commercial/quotations'
 import type { StatusMeta } from './catalogs'
 
 /**
@@ -14,6 +15,13 @@ export const quotationStatusMeta: Record<QuotationStatus, StatusMeta> = {
   approved: { label: 'Aprobada', tone: 'success' },
   rejected: { label: 'Rechazada', tone: 'danger' },
   expired: { label: 'Vencida', tone: 'warning' },
+}
+
+/** Phase 5.0B: display stage (adds "ready for sending" and "replaced"). */
+export const quotationStageMeta: Record<QuotationStage, StatusMeta> = {
+  ...quotationStatusMeta,
+  ready: { label: 'Preparada para envío', tone: 'accent' },
+  superseded: { label: 'Reemplazada', tone: 'neutral' },
 }
 
 export const purchaseOrderStatusMeta: Record<PurchaseOrderStatus, StatusMeta> = {

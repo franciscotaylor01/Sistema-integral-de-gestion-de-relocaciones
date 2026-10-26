@@ -15,6 +15,7 @@ import type { DocumentStatus } from '@/types/domain'
 import { PreviewBanner } from '../components/PreviewBanner'
 import type { ProjectContext } from '../projectContext'
 import { getServiceType } from '@/config/serviceCatalog'
+import { InitialDocsSection } from '@/features/documents/InitialDocsSection'
 
 export function DocumentsTab({ ctx }: { ctx: ProjectContext }) {
   const [query, setQuery] = useState('')
@@ -27,8 +28,9 @@ export function DocumentsTab({ ctx }: { ctx: ProjectContext }) {
 
   return (
     <div className="flex flex-col gap-[20px]">
+      <InitialDocsSection project={ctx.project} ws={ctx.workspace} />
       <PreviewBanner>
-        La carga y el almacenamiento de documentos se habilitarán con el backend. Este listado muestra documentación ficticia de ejemplo.
+        La carga y el almacenamiento de documentos se habilitarán con el backend. El listado de abajo muestra documentación ficticia de ejemplo.
       </PreviewBanner>
       <Card aria-labelledby="docs-title" className="px-[19px] pb-[19px] pt-[19px]">
         <SectionTitle

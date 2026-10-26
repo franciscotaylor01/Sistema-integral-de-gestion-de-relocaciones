@@ -63,7 +63,7 @@ const petrovalle: Client = {
   paymentTermsDays: 45,
   clientSince: '2026-02-01',
   contacts: [{ id: 'ct_pv_1', name: 'Lucía Ferraro', role: 'Movilidad', email: 'l.ferraro@petrovalle.example', phone: '+54 11 5555 0101', primary: true }],
-  policy: { requiresPurchaseOrder: true, requiresApprovedQuote: false, billingMilestone: 'service-started', quoteValidityDays: 30, poMode: 'open', requiresCertificate: true },
+  policy: { requiresPurchaseOrder: true, requiresApprovedQuote: false, billingMilestone: 'service-started', quoteValidityDays: 30, poMode: 'open', requiresCertificate: true, requiresPriceApproval: true },
   offeredServices: ['immigration', 'housing', 'schooling', 'moving', 'intercultural-workshop', 'cuil-unification'],
   notes: 'Cliente ficticio: trabaja con OC abiertas por provincia y certificados en su portal de proveedores.',
 }

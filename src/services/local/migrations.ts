@@ -89,12 +89,37 @@ function v8ToV9(data: Omit<Dataset, 'settlementBatches'>): Dataset {
  * they were — never reinterpreted. Drafts commit nothing yet, so they adopt the
  * new model.
  */
-function v9ToV10(data: Dataset): Dataset {
+function v9ToV10(data: Omit<Dataset, 'tariffImports' | 'communications' | 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'>): Omit<Dataset, 'tariffImports' | 'communications' | 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'> {
   return {
     ...data,
     schemaVersion: 10,
     settlementBatches: (data.settlementBatches ?? []).map((b) => (b.allocationMode ? b : { ...b, allocationMode: b.status === 'draft' ? 'pro-rata' : 'ordered' })),
   }
+}
+
+/** v10 → v11: tariff import history (empty). Nothing else changes. */
+function v10ToV11(data: Omit<Dataset, 'tariffImports' | 'communications' | 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'>): Omit<Dataset, 'communications' | 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'> {
+  return { ...data, schemaVersion: 11, tariffImports: [] }
+}
+
+/** v11 → v12: commercial communications history (empty). Quotations gain optional fields only. */
+function v11ToV12(data: Omit<Dataset, 'communications' | 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'>): Omit<Dataset, 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'> {
+  return { ...data, schemaVersion: 12, communications: [] }
+}
+
+/** v12 → v13: document template library and initial documents (empty). Existing documents untouched. */
+function v12ToV13(data: Omit<Dataset, 'documentTemplates' | 'initialDocuments' | 'poImports' | 'poReviews'>): Omit<Dataset, 'poImports' | 'poReviews'> {
+  return { ...data, schemaVersion: 13, documentTemplates: [], initialDocuments: [] }
+}
+
+/** v13 → v14: PO document import history (empty). Existing POs are untouched. */
+function v13ToV14(data: Omit<Dataset, 'poImports' | 'poReviews'>): Omit<Dataset, 'poReviews'> {
+  return { ...data, schemaVersion: 14, poImports: [] }
+}
+
+/** v14 → v15: PO vs quotation review decisions (empty). */
+function v14ToV15(data: Omit<Dataset, 'poReviews'>): Dataset {
+  return { ...data, schemaVersion: 15, poReviews: [] }
 }
 
 const steps: Record<number, (data: never) => unknown> = {
@@ -106,6 +131,11 @@ const steps: Record<number, (data: never) => unknown> = {
   7: v7ToV8 as (data: never) => unknown,
   8: v8ToV9 as (data: never) => unknown,
   9: v9ToV10 as (data: never) => unknown,
+  10: v10ToV11 as (data: never) => unknown,
+  11: v11ToV12 as (data: never) => unknown,
+  12: v12ToV13 as (data: never) => unknown,
+  13: v13ToV14 as (data: never) => unknown,
+  14: v14ToV15 as (data: never) => unknown,
 }
 
 /** Returns the migrated dataset, or undefined if `data` cannot be upgraded. */

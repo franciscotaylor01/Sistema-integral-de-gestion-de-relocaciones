@@ -10,6 +10,12 @@ import type {
   Certificate,
   Attachment,
   SettlementBatch,
+  TariffImport,
+  CommercialCommunication,
+  DocumentTemplate,
+  InitialDocument,
+  PoImportRecord,
+  PoComparisonReview,
   LegalEntity,
   SupplierAgreement,
   SupplierObligation,
@@ -34,7 +40,7 @@ import type {
 } from '@/types/domain'
 
 /** Bump when the persisted shape changes; older stored data is discarded safely. */
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 15
 
 /** Normalised application state. One collection per future database table. */
 export interface Dataset {
@@ -71,6 +77,17 @@ export interface Dataset {
   attachments: Attachment[]
   /** Phase 4.9 — grouped settlements to the partner (Florencia). */
   settlementBatches: SettlementBatch[]
+  /** Phase 5.0A — Excel tariff import history. */
+  tariffImports: TariffImport[]
+  /** Phase 5.0B — manually registered quotation / tariff sendings. */
+  communications: CommercialCommunication[]
+  /** Phase 5.0B — beneficiary document templates (global) and their requests per project. */
+  documentTemplates: DocumentTemplate[]
+  initialDocuments: InitialDocument[]
+  /** Phase 5.0C.1 — validated PO document imports. */
+  poImports: PoImportRecord[]
+  /** Phase 5.0C.2 — decisions on PO vs quotation differences. */
+  poReviews: PoComparisonReview[]
   currencyIndicators: CurrencyIndicator[]
   alerts: Alert[]
   /** Phase 3 — commercial management. */

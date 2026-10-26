@@ -19,6 +19,8 @@ import type { Dataset } from './dataset'
 import { DomainError, isIsoDate } from './errors'
 import { buildService, insertService, validateServiceCommercial, validateServiceInput, type NewServiceInput } from './services'
 import { effectivePolicy, openOrderLive } from './commercial/catalog'
+import { isArProvince } from '@/config/provinces'
+import { requestInitialDocuments } from './initialDocuments'
 
 export type FamilyRole = Exclude<ParticipantRole, 'beneficiary'>
 
@@ -53,6 +55,10 @@ export interface NewProjectInput {
   /** Phase 4.6: province and open PO applied to the project. */
   province?: string
   openOrderId?: string
+  /** Phase 5.0A: project currency among the client's currencies (an open PO imposes its own). */
+  currency?: CurrencyCode
+  /** Phase 5.0B: initial-document templates selected among the suggested ones. */
+  initialTemplateIds?: string[]
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -101,20 +107,27 @@ export function validateProjectInput(ds: Dataset, input: NewProjectInput): Recor
   const client = findById(ds.clients, input.clientId)
   const policy = effectivePolicy(client)
   const order = input.openOrderId ? findById(ds.openOrders, input.openOrderId) : undefined
+  if (input.province && !isArProvince(input.province)) f.province = 'Elegí una provincia argentina.'
+  if (input.currency && client && !client.currencies.includes(input.currency)) f.currency = 'Moneda no habilitada para el cliente.'
   if (policy.poMode === 'open') {
     if (!input.province?.trim()) f.province = 'Elegí la provincia.'
-    if (!order) f.openOrderId = 'Elegí la OC abierta aplicable.'
+    if (!order) f.openOrderId = input.province ? 'No hay OC abierta vigente para esa provincia.' : 'Elegí la OC abierta aplicable.'
   }
   if (order) {
     if (order.clientId !== input.clientId) f.openOrderId = 'La OC es de otro cliente.'
     else if (!openOrderLive(order, isIsoDate(input.startDate) ? input.startDate : order.validFrom)) f.openOrderId = 'La OC no está vigente para la fecha de inicio.'
     else if (input.province?.trim() && order.province !== input.province.trim()) f.openOrderId = 'La OC corresponde a otra provincia.'
   }
-  const draft = client && draftProject(input, client.billingCurrency, order?.currency)
+  const draft = client && draftProject(input, input.currency ?? client.billingCurrency, order?.currency)
   input.services.forEach((s, i) => {
     for (const [key, msg] of Object.entries(validateServiceInput(ds, s, projectDates))) f[`services.${i}.${key}`] = msg
     if (draft && !f.openOrderId) for (const [key, msg] of Object.entries(validateServiceCommercial(ds, draft, s))) f[`services.${i}.${key}`] ??= msg
   })
+  const types = new Set(input.services.map((sv) => sv.typeId))
+  for (const id of input.initialTemplateIds ?? []) {
+    const t = ds.documentTemplates.find((x) => x.id === id)
+    if (!t || !t.active || !t.serviceTypeIds.some((st) => types.has(st))) f.initialTemplateIds = 'Hay plantillas que no corresponden a los servicios elegidos.'
+  }
   return f
 }
 
@@ -211,7 +224,7 @@ export function createProject(
     ownerId: input.ownerId,
     operationalStatus: 'onboarding',
     financialStatus: 'to-quote',
-    currency: (input.openOrderId && findById(ds.openOrders, input.openOrderId)?.currency) || client.billingCurrency,
+    currency: (input.openOrderId && findById(ds.openOrders, input.openOrderId)?.currency) || input.currency || client.billingCurrency,
     startDate: input.startDate,
     targetDate: input.targetDate,
     notes: input.notes?.trim() || undefined,
@@ -240,6 +253,7 @@ export function createProject(
     },
     ctx,
   )
+  if (input.initialTemplateIds?.length) next = requestInitialDocuments(next, projectId, input.initialTemplateIds, ctx)
   return { ds: next, projectId, duplicate: false }
 }
 
@@ -252,6 +266,8 @@ export interface ProjectPatch {
   targetDate?: string
   operationalStatus?: ProjectOperationalStatus
   notes?: string
+  /** Phase 5.0A: province ('' clears it; an open PO keeps its own province). */
+  province?: string
   beneficiary?: Partial<Omit<PersonInput, 'nationality'>> & { nationality?: CountryCode }
   addFamily?: FamilyMemberInput[]
   removeParticipantIds?: string[]
@@ -268,6 +284,11 @@ const operationalLabel: Record<ProjectOperationalStatus, string> = {
 export function updateProject(ds: Dataset, projectId: string, patch: ProjectPatch, ctx: DomainContext): Dataset {
   const project = findById(ds.projects, projectId)
   if (!project) throw new DomainError('El proyecto no existe.')
+  if (patch.province !== undefined && patch.province !== '' && !isArProvince(patch.province)) throw new DomainError('Elegí una provincia argentina.', { province: 'Provincia inválida.' })
+  if (patch.province !== undefined && project.openOrderId) {
+    const order = findById(ds.openOrders, project.openOrderId)
+    if (order && patch.province !== order.province) throw new DomainError(`La OC abierta ${order.number} es de ${order.province}: la provincia no puede cambiar.`, { province: 'No coincide con la OC abierta.' })
+  }
   const merged: ProjectRecord = {
     ...project,
     category: patch.category ?? project.category,
@@ -278,6 +299,7 @@ export function updateProject(ds: Dataset, projectId: string, patch: ProjectPatc
     targetDate: patch.targetDate ?? project.targetDate,
     operationalStatus: patch.operationalStatus ?? project.operationalStatus,
     notes: patch.notes !== undefined ? patch.notes.trim() || undefined : project.notes,
+    province: patch.province !== undefined ? patch.province || undefined : project.province,
     updatedAt: ctx.now(),
   }
 
@@ -320,6 +342,7 @@ export function updateProject(ds: Dataset, projectId: string, patch: ProjectPatc
   if (merged.targetDate !== project.targetDate) changes.push('fecha estimada de finalización')
   if (merged.operationalStatus !== project.operationalStatus) changes.push(`estado: ${operationalLabel[merged.operationalStatus]}`)
   if (merged.notes !== project.notes) changes.push('notas')
+  if (merged.province !== project.province) changes.push(`provincia: ${merged.province ?? 'sin provincia'}`)
 
   let next: Dataset = {
     ...ds,
